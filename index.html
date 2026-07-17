@@ -840,6 +840,10 @@ function renderTechToggle(match) {
             <span class="cm-label">Confidence</span>
             <span class="cm-value">${escHtml(match.confidence)}</span>
           </div>
+          <div class="catalog-match-row" style="align-items:flex-start">
+            <span class="cm-label">Catalog template</span>
+            <span class="cm-value" style="font-style:italic;color:var(--text-3)">${escHtml(match.row.ERROR_TEXT)}</span>
+          </div>
         </div>
       </div>
     </div>`;
