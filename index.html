@@ -383,6 +383,8 @@ let library = [];       // curated solutions
 let archive = [];       // every submission
 let currentImage = null;
 let currentImageType = null;
+let currentImageSrc = null;
+let activityContext = '';
 
 // ── CSV Parser ──────────────────────────────────────────────
 function parseCSV(text) {
@@ -564,6 +566,10 @@ function renderTroubleshoot() {
       <input type="file" id="fileInput" accept="image/png,image/jpeg" style="display:none">
       <div id="previewArea" style="display:none;margin-top:16px">
         <img id="previewImg" class="preview-img">
+        <div class="field" style="margin-bottom:12px">
+          <label>What were you trying to do when this error appeared? <span style="color:var(--text-3)">(optional but helps with troubleshooting)</span></label>
+          <input id="activityInput" placeholder="e.g. trying to delete a PO line, adding a new receipt, releasing a shop order...">
+        </div>
         <div class="btn-row">
           <button class="btn btn-primary" id="analyzeBtn">🔍 Analyze error</button>
           <button class="btn btn-ghost" id="clearBtn">Choose different image</button>
@@ -592,6 +598,7 @@ function renderTroubleshoot() {
     reader.onload = () => {
       currentImage = reader.result.split(',')[1];
       currentImageType = file.type || 'image/png';
+      currentImageSrc = reader.result;  // save full data URL
       previewImg.src = reader.result;
       dropzone.style.display = 'none';
       previewArea.style.display = 'block';
@@ -617,6 +624,7 @@ async function analyzeError() {
   btn.disabled = true;
   btn.innerHTML = '<span class="spin"></span> Step 1: Reading error text...';
   resultArea.innerHTML = '';
+  activityContext = document.getElementById('activityInput')?.value?.trim() || '';
 
   try {
     // STEP 1: Extract error text from screenshot (vision only, no catalog)
@@ -642,7 +650,7 @@ Respond ONLY with raw JSON (no markdown):
           role: 'user',
           content: [
             { type: 'image', source: { type: 'base64', media_type: currentImageType, data: currentImage } },
-            { type: 'text', text: 'Extract the exact error text from this IFS screenshot.' }
+            { type: 'text', text: `Extract the exact error text from this IFS screenshot.${activityContext ? ' The user was trying to: ' + activityContext : ''}` }
           ]
         }]
       })
@@ -723,6 +731,8 @@ Which candidate best matches the extracted error?`
       timestamp: new Date().toISOString(),
       error_text: extracted.error_text,
       screen_name: extracted.screen_name || null,
+      activity: activityContext || null,
+      screenshot: currentImageSrc,
       catalog_match: confirmedMatch ? {
         error_code: confirmedMatch.row.ERROR_CODE,
         component: confirmedMatch.row.COMPONENT_NAME,
@@ -749,13 +759,13 @@ function renderResult(extracted, catalogMatch, libMatch, debugInfo) {
   const debugHtml = debugInfo ? `<div style="font-family:var(--mono);font-size:11px;color:var(--text-3);background:var(--surface-2);border-radius:6px;padding:8px;margin-bottom:12px;white-space:pre">${escHtml(debugInfo)}</div>` : '';
 
   const extractedHtml = `
-    ${currentImage ? `<img src="data:${currentImageType};base64,${currentImage}" class="preview-img" style="max-height:180px;margin-bottom:14px">` : ''}
     <div class="extracted-label">
       Text read from screenshot
       <span class="saved-tag">✓ Archived</span>
     </div>
     <div class="extracted-box">${escHtml(extracted.error_text)}</div>
-    ${extracted.screen_name ? `<div style="font-size:11px;color:var(--text-3);margin-bottom:12px">📍 Screen: <b style="color:var(--text-2)">${escHtml(extracted.screen_name)}</b></div>` : ''}
+    ${extracted.screen_name ? `<div style="font-size:11px;color:var(--text-3);margin-bottom:4px">📍 Screen: <b style="color:var(--text-2)">${escHtml(extracted.screen_name)}</b></div>` : ''}
+    ${activityContext ? `<div style="font-size:11px;color:var(--text-3);margin-bottom:12px">🎯 User was trying to: <b style="color:var(--text-2)">${escHtml(activityContext)}</b></div>` : ''}
   `;
 
   // If we have a library solution — show it directly
@@ -845,6 +855,10 @@ function renderTechToggle(match) {
             <span class="cm-label">Catalog template</span>
             <span class="cm-value" style="font-style:italic;color:var(--text-3)">${escHtml(match.row.ERROR_TEXT)}</span>
           </div>
+          <div class="catalog-match-row" style="align-items:flex-start;margin-top:8px">
+            <span class="cm-label">Screenshot</span>
+            <img src="${currentImageSrc}" style="max-width:100%;max-height:300px;border-radius:6px;border:1px solid var(--border);margin-top:4px">
+          </div>
         </div>
       </div>
     </div>`;
@@ -909,7 +923,9 @@ function renderArchive() {
         return `
           <div class="archive-item">
             <div class="archive-time">🕐 ${escHtml(dateStr)}${e.screen_name ? ` &nbsp;·&nbsp; 📍 ${escHtml(e.screen_name)}` : ''}</div>
+            ${e.activity ? `<div style="font-size:11px;color:var(--text-3);margin-bottom:4px">🎯 Was trying to: <b style="color:var(--text-2)">${escHtml(e.activity)}</b></div>` : ''}
             <div class="archive-text">${escHtml(e.error_text)}</div>
+            ${e.screenshot ? `<img src="${e.screenshot}" style="max-width:100%;max-height:200px;border-radius:6px;border:1px solid var(--border);margin:6px 0">` : ''}
             <div class="archive-meta">
               ${e.catalog_match
                 ? `<span class="archive-tag matched">✓ ${escHtml(e.catalog_match.error_code)} · ${escHtml(e.catalog_match.component)}</span>
