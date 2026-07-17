@@ -419,63 +419,53 @@ function parseCSVLine(line) {
 }
 
 // ── JavaScript Matching Engine ───────────────────────────────
-function normalizeText(text) {
+
+// Strip ALL dynamic parts from a text — :P1 :P2, numbers, IFS codes
+function stripDynamic(text) {
   if (!text) return '';
-  // Replace dynamic parameters :P1, :P2 etc with a wildcard marker
   return text.toLowerCase()
-    .replace(/:\w+/g, '')         // remove :P1 :P2 etc
-    .replace(/\b\d+\b/g, '')      // remove standalone numbers
-    .replace(/[^a-z\s]/g, ' ')    // keep only letters and spaces
+    .replace(/:[a-z][0-9]*/gi, ' ')           // :P1 :P2 :P3
+    .replace(/\b[a-z]{1,3}\d+[a-z0-9]*\b/gi, ' ') // R10047 B5501 NCR011101
+    .replace(/\b\d+\b/g, ' ')                 // standalone numbers 1279514
+    .replace(/[^a-z\s]/g, ' ')                // punctuation
     .replace(/\s+/g, ' ')
     .trim();
 }
 
-function scoreMatch(extractedNorm, catalogErrorNorm) {
-  if (!catalogErrorNorm || !extractedNorm) return 0;
-  
-  // Word overlap scoring
-  const extractedWords = new Set(extractedNorm.split(' ').filter(w => w.length > 3));
-  const catalogWords = new Set(catalogErrorNorm.split(' ').filter(w => w.length > 3));
-  
-  if (extractedWords.size === 0 || catalogWords.size === 0) return 0;
-  
-  let matches = 0;
-  extractedWords.forEach(w => { if (catalogWords.has(w)) matches++; });
-  
-  const precision = matches / extractedWords.size;
-  const recall = matches / catalogWords.size;
-  
-  if (precision + recall === 0) return 0;
-  return 2 * (precision * recall) / (precision + recall); // F1 score
+// Extract meaningful static words (length > 3, not common stop words)
+const STOP_WORDS = new Set(['that','this','with','from','have','been','will','when',
+  'they','them','your','what','also','into','more','than','some','only','such',
+  'must','does','cannot','not','are','for','the','and','has','its','but']);
+
+function getStaticWords(text) {
+  return stripDynamic(text)
+    .split(/\s+/)
+    .filter(w => w.length > 3 && !STOP_WORDS.has(w));
 }
 
 function findCatalogMatches(extractedText, topN = 5) {
   if (!extractedText || catalog.length === 0) return [];
-  
-  const extractedNorm = normalizeText(extractedText);
+
+  const extractedWords = getStaticWords(extractedText);
+  if (extractedWords.length === 0) return [];
+
   const scored = [];
-  
-  // First pass: look for error code match (exact)
-  const words = extractedText.toUpperCase().split(/\W+/);
-  const codeMatches = catalog.filter(row => 
-    row.ERROR_CODE && words.includes(row.ERROR_CODE.toUpperCase())
-  );
-  
-  if (codeMatches.length > 0) {
-    // Exact error code match — high confidence
-    return codeMatches.slice(0, topN).map(row => ({ row, score: 1.0, matchType: 'code' }));
+
+  for (const row of catalog) {
+    if (!row.ERROR_TEXT) continue;
+
+    const catalogWords = getStaticWords(row.ERROR_TEXT);
+    if (catalogWords.length === 0) continue;
+
+    // Count how many extracted words appear in catalog template
+    const hits = extractedWords.filter(w => catalogWords.includes(w)).length;
+    if (hits === 0) continue;
+
+    // Score = hits / max(extracted, catalog) — penalizes partial matches
+    const score = hits / Math.max(extractedWords.length, catalogWords.length);
+    if (score >= 0.4) scored.push({ row, score, matchType: 'static', hits });
   }
-  
-  // Second pass: fuzzy text matching
-  const sample = catalog.length > 10000 
-    ? catalog.filter((_, i) => i % 2 === 0)  // sample every other row for speed
-    : catalog;
-    
-  for (const row of sample) {
-    const score = scoreMatch(extractedNorm, normalizeText(row.ERROR_TEXT));
-    if (score > 0.3) scored.push({ row, score, matchType: 'fuzzy' });
-  }
-  
+
   return scored.sort((a, b) => b.score - a.score).slice(0, topN);
 }
 
@@ -681,6 +671,11 @@ Respond ONLY with raw JSON (no markdown):
       extracted.error_text.toLowerCase().includes(l.title.toLowerCase().substring(0, 20))
     );
 
+    // Debug: show matching info
+    const catalogSample = catalog.slice(0, 2).map(r => r.ERROR_TEXT).join(' | ');
+    const debugInfo = `Static words: [${getStaticWords(extracted.error_text).join(', ')}]\nCatalog size: ${catalog.length}\nCatalog sample: ${catalogSample}\nMatches found: ${catalogMatches.length}\nTop: ${catalogMatches[0] ? catalogMatches[0].row.ERROR_CODE + ' score:' + catalogMatches[0].score.toFixed(2) : 'none'}`;
+    console.log(debugInfo);
+
     // STEP 4: Claude confirms best catalog match (tiny API call — just top 5 candidates)
     let confirmedMatch = null;
     if (catalogMatches.length > 0) {
@@ -739,7 +734,7 @@ Which candidate best matches the extracted error?`
     archive.unshift(entry);
     await saveArchive();
 
-    renderResult(extracted, confirmedMatch, libMatch);
+    renderResult(extracted, confirmedMatch, libMatch, debugInfo);
 
   } catch (err) {
     resultArea.innerHTML = `<div class="card"><div class="empty"><div class="empty-icon">⚠️</div>${escHtml(err.message || 'Something went wrong')}</div></div>`;
@@ -749,8 +744,9 @@ Which candidate best matches the extracted error?`
   }
 }
 
-function renderResult(extracted, catalogMatch, libMatch) {
+function renderResult(extracted, catalogMatch, libMatch, debugInfo) {
   const resultArea = document.getElementById('resultArea');
+  const debugHtml = debugInfo ? `<div style="font-family:var(--mono);font-size:11px;color:var(--text-3);background:var(--surface-2);border-radius:6px;padding:8px;margin-bottom:12px;white-space:pre">${escHtml(debugInfo)}</div>` : '';
 
   const extractedHtml = `
     <div class="extracted-label">
@@ -765,11 +761,10 @@ function renderResult(extracted, catalogMatch, libMatch) {
   if (libMatch) {
     resultArea.innerHTML = `
       <div class="card">
-        <span class="match-badge high">✓ Solution found in library</span>
+        <span class="match-badge high">✓ Solution found</span>
         ${extractedHtml}
-        ${catalogMatch ? renderCatalogMatchInfo(catalogMatch) : ''}
         <div class="solution-header">${escHtml(libMatch.title)}</div>
-        <div class="solution-sub">📦 ${escHtml(libMatch.component)} &nbsp;·&nbsp; 👤 Resolved by: ${escHtml(libMatch.who_acts)}</div>
+        <div class="solution-sub">📦 ${escHtml(libMatch.component)} &nbsp;·&nbsp; 👤 ${escHtml(libMatch.who_acts)}</div>
         <ul class="step-list">
           ${libMatch.instructions.map((s, i) => `
             <li class="step-row">
@@ -777,6 +772,7 @@ function renderResult(extracted, catalogMatch, libMatch) {
               <span class="step-text">${escHtml(s)}</span>
             </li>`).join('')}
         </ul>
+        ${catalogMatch ? renderTechToggle(catalogMatch) : ''}
         ${renderFeedback()}
       </div>`;
     return;
@@ -788,14 +784,14 @@ function renderResult(extracted, catalogMatch, libMatch) {
       <div class="card">
         <span class="match-badge ${catalogMatch.confidence}">⚡ Catalog match — ${catalogMatch.confidence} confidence</span>
         ${extractedHtml}
-        ${renderCatalogMatchInfo(catalogMatch)}
         ${renderVerification(catalogMatch)}
-        <div class="solution-sub" style="margin-top:12px;color:var(--warning)">
-          ⚠️ No curated solution yet for this error. Add one in the Solution Library tab, or escalate to a consultant.
+        <div style="margin-top:12px;font-size:13px;color:var(--warning)">
+          ⚠️ No curated solution yet. Add one below or escalate to a consultant.
         </div>
         <div class="btn-row" style="margin-top:12px">
           <button class="btn btn-primary" onclick="switchToAddSolution('${escHtml(catalogMatch.row.ERROR_CODE)}', '${escHtml(catalogMatch.row.COMPONENT_NAME)}')">+ Add solution</button>
         </div>
+        ${renderTechToggle(catalogMatch)}
       </div>`;
     return;
   }
@@ -814,26 +810,43 @@ function renderResult(extracted, catalogMatch, libMatch) {
     </div>`;
 }
 
-function renderCatalogMatchInfo(match) {
+function renderTechToggle(match) {
+  const id = 'tech_' + Date.now();
   return `
-    <div class="catalog-match">
-      <div class="catalog-match-row">
-        <span class="cm-label">Error code</span>
-        <span class="cm-code">${escHtml(match.row.ERROR_CODE)}</span>
-      </div>
-      <div class="catalog-match-row">
-        <span class="cm-label">Module</span>
-        <span class="cm-value">${escHtml(match.row.COMPONENT_NAME)}</span>
-      </div>
-      <div class="catalog-match-row">
-        <span class="cm-label">Package</span>
-        <span class="cm-value" style="font-family:var(--mono);font-size:11px">${escHtml(match.row.PACKAGE_NAME)}</span>
-      </div>
-      <div class="catalog-match-row">
-        <span class="cm-label">IFS version</span>
-        <span class="cm-value">${escHtml(match.row.IFS_VERSION)}</span>
+    <div style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
+      <button onclick="document.getElementById('${id}').style.display=document.getElementById('${id}').style.display==='none'?'block':'none'"
+        style="background:none;border:none;color:var(--text-3);font-size:12px;cursor:pointer;padding:0;display:flex;align-items:center;gap:6px">
+        <span>⚙️ Show technical details</span>
+      </button>
+      <div id="${id}" style="display:none;margin-top:10px">
+        <div class="catalog-match">
+          <div class="catalog-match-row">
+            <span class="cm-label">Error code</span>
+            <span class="cm-code">${escHtml(match.row.ERROR_CODE)}</span>
+          </div>
+          <div class="catalog-match-row">
+            <span class="cm-label">Module</span>
+            <span class="cm-value">${escHtml(match.row.COMPONENT_NAME)}</span>
+          </div>
+          <div class="catalog-match-row">
+            <span class="cm-label">Package</span>
+            <span class="cm-value" style="font-family:var(--mono);font-size:11px">${escHtml(match.row.PACKAGE_NAME)}</span>
+          </div>
+          <div class="catalog-match-row">
+            <span class="cm-label">IFS version</span>
+            <span class="cm-value">${escHtml(match.row.IFS_VERSION)}</span>
+          </div>
+          <div class="catalog-match-row">
+            <span class="cm-label">Confidence</span>
+            <span class="cm-value">${escHtml(match.confidence)}</span>
+          </div>
+        </div>
       </div>
     </div>`;
+}
+
+function renderCatalogMatchInfo(match) {
+  return renderTechToggle(match);
 }
 
 function renderVerification(match) {
