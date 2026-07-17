@@ -749,6 +749,7 @@ function renderResult(extracted, catalogMatch, libMatch, debugInfo) {
   const debugHtml = debugInfo ? `<div style="font-family:var(--mono);font-size:11px;color:var(--text-3);background:var(--surface-2);border-radius:6px;padding:8px;margin-bottom:12px;white-space:pre">${escHtml(debugInfo)}</div>` : '';
 
   const extractedHtml = `
+    ${currentImage ? `<img src="data:${currentImageType};base64,${currentImage}" class="preview-img" style="max-height:180px;margin-bottom:14px">` : ''}
     <div class="extracted-label">
       Text read from screenshot
       <span class="saved-tag">✓ Archived</span>
