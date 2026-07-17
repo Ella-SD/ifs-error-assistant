@@ -1,0 +1,1047 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IFS Error Assistant</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface-2: #222535;
+    --border: #2e3148;
+    --border-strong: #3d4166;
+    --text: #e8eaf6;
+    --text-2: #9ba3c9;
+    --text-3: #5c6494;
+    --accent: #6c63ff;
+    --accent-dim: #2d2b5e;
+    --success: #22c55e;
+    --success-dim: #052e16;
+    --warning: #f59e0b;
+    --warning-dim: #2d1f00;
+    --danger: #ef4444;
+    --danger-dim: #2d0a0a;
+    --radius: 10px;
+    --font: 'Inter', system-ui, sans-serif;
+    --mono: 'JetBrains Mono', 'Fira Code', monospace;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 0;
+  }
+
+  /* Header */
+  .header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 16px 24px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .header-logo {
+    width: 32px; height: 32px;
+    background: var(--accent);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; font-weight: 700; color: white;
+  }
+  .header-title { font-size: 16px; font-weight: 600; }
+  .header-sub { font-size: 12px; color: var(--text-3); margin-left: auto; }
+  .catalog-status {
+    font-size: 11px; padding: 3px 8px; border-radius: 999px;
+    background: var(--accent-dim); color: var(--accent);
+    margin-left: 8px;
+  }
+  .catalog-status.loading { background: var(--warning-dim); color: var(--warning); }
+  .catalog-status.error { background: var(--danger-dim); color: var(--danger); }
+
+  /* Layout */
+  .app { display: flex; height: calc(100vh - 57px); }
+
+  /* Sidebar */
+  .sidebar {
+    width: 200px; min-width: 200px;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    padding: 12px 8px;
+    display: flex; flex-direction: column; gap: 2px;
+  }
+  .nav-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 12px; border-radius: 8px;
+    font-size: 13px; font-weight: 500; color: var(--text-2);
+    cursor: pointer; border: none; background: none;
+    width: 100%; text-align: left; transition: all .15s;
+  }
+  .nav-item:hover { background: var(--surface-2); color: var(--text); }
+  .nav-item.active { background: var(--accent-dim); color: var(--accent); }
+  .nav-badge {
+    margin-left: auto; font-size: 10px; font-weight: 600;
+    background: var(--accent); color: white;
+    padding: 1px 6px; border-radius: 999px;
+  }
+  .nav-icon { font-size: 15px; width: 18px; text-align: center; }
+
+  /* Main content */
+  .main { flex: 1; overflow-y: auto; padding: 24px; }
+
+  /* Cards */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    margin-bottom: 16px;
+  }
+  .card-title {
+    font-size: 13px; font-weight: 600;
+    color: var(--text-2); text-transform: uppercase;
+    letter-spacing: .06em; margin-bottom: 14px;
+  }
+
+  /* Upload zone */
+  .drop-zone {
+    border: 1.5px dashed var(--border-strong);
+    border-radius: var(--radius);
+    padding: 40px 20px; text-align: center;
+    cursor: pointer; transition: all .15s;
+  }
+  .drop-zone:hover, .drop-zone.drag {
+    border-color: var(--accent);
+    background: var(--accent-dim);
+  }
+  .drop-icon { font-size: 32px; margin-bottom: 10px; }
+  .drop-title { font-size: 14px; font-weight: 500; margin-bottom: 4px; }
+  .drop-sub { font-size: 12px; color: var(--text-3); }
+
+  /* Preview */
+  .preview-img {
+    max-width: 100%; max-height: 220px;
+    border-radius: 8px; display: block;
+    margin: 0 auto 16px; border: 1px solid var(--border);
+  }
+
+  /* Buttons */
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 9px 16px; border-radius: 8px;
+    font-size: 13px; font-weight: 500; cursor: pointer;
+    border: none; transition: all .15s;
+  }
+  .btn-primary { background: var(--accent); color: white; }
+  .btn-primary:hover { opacity: .9; }
+  .btn-primary:disabled { opacity: .4; cursor: default; }
+  .btn-ghost {
+    background: none; border: 1px solid var(--border-strong);
+    color: var(--text-2);
+  }
+  .btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
+  .btn-danger { background: none; border: none; color: var(--danger); font-size: 12px; cursor: pointer; padding: 4px 8px; }
+  .btn-row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+
+  /* Spinner */
+  .spin {
+    display: inline-block; width: 13px; height: 13px;
+    border: 2px solid rgba(255,255,255,.2);
+    border-top-color: white; border-radius: 50%;
+    animation: spin .7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Progress steps */
+  .steps { display: flex; gap: 0; margin-bottom: 16px; }
+  .step-item {
+    flex: 1; text-align: center; font-size: 11px;
+    color: var(--text-3); position: relative;
+  }
+  .step-item.active { color: var(--accent); }
+  .step-item.done { color: var(--success); }
+  .step-dot {
+    width: 20px; height: 20px; border-radius: 50%;
+    background: var(--surface-2); border: 1.5px solid var(--border-strong);
+    margin: 0 auto 4px; display: flex; align-items: center; justify-content: center;
+    font-size: 10px;
+  }
+  .step-item.active .step-dot { border-color: var(--accent); background: var(--accent-dim); color: var(--accent); }
+  .step-item.done .step-dot { border-color: var(--success); background: var(--success-dim); color: var(--success); }
+  .step-line {
+    position: absolute; top: 10px; left: 50%; right: -50%;
+    height: 1px; background: var(--border); z-index: 0;
+  }
+  .step-item:last-child .step-line { display: none; }
+
+  /* Extracted text box */
+  .extracted-box {
+    background: var(--surface-2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 12px 14px;
+    font-family: var(--mono); font-size: 12px;
+    color: var(--text); line-height: 1.6;
+    white-space: pre-wrap; word-break: break-word;
+    margin-bottom: 14px;
+  }
+  .extracted-label {
+    font-size: 10px; text-transform: uppercase;
+    letter-spacing: .06em; color: var(--text-3);
+    margin-bottom: 6px; display: flex; align-items: center; gap: 6px;
+  }
+  .extracted-label .saved-tag {
+    background: var(--success-dim); color: var(--success);
+    padding: 1px 6px; border-radius: 4px; font-size: 10px;
+  }
+
+  /* Match result */
+  .match-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 11px; font-weight: 600; padding: 3px 10px;
+    border-radius: 999px; margin-bottom: 12px;
+  }
+  .match-badge.high { background: var(--success-dim); color: var(--success); }
+  .match-badge.medium { background: var(--warning-dim); color: var(--warning); }
+  .match-badge.none { background: var(--danger-dim); color: var(--danger); }
+
+  /* Catalog match info */
+  .catalog-match {
+    background: var(--surface-2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 12px 14px; margin-bottom: 14px;
+  }
+  .catalog-match-row {
+    display: flex; gap: 8px; align-items: center;
+    font-size: 12px; margin-bottom: 4px;
+  }
+  .catalog-match-row:last-child { margin-bottom: 0; }
+  .cm-label { color: var(--text-3); min-width: 90px; }
+  .cm-value { color: var(--text); font-weight: 500; }
+  .cm-code {
+    font-family: var(--mono); font-size: 11px;
+    background: var(--accent-dim); color: var(--accent);
+    padding: 1px 6px; border-radius: 4px;
+  }
+
+  /* Verification box */
+  .verify-box {
+    background: var(--accent-dim); border: 1px solid var(--accent);
+    border-radius: 8px; padding: 14px; margin-bottom: 14px;
+  }
+  .verify-question { font-size: 13px; margin-bottom: 10px; }
+  .verify-btns { display: flex; gap: 8px; }
+  .verify-btn {
+    flex: 1; padding: 8px; border-radius: 8px; font-size: 12px;
+    font-weight: 500; cursor: pointer; border: 1px solid var(--border-strong);
+    background: var(--surface-2); color: var(--text); transition: all .15s;
+  }
+  .verify-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .verify-btn.yes { background: var(--success-dim); border-color: var(--success); color: var(--success); }
+  .verify-btn.no { background: var(--danger-dim); border-color: var(--danger); color: var(--danger); }
+
+  /* Solution steps */
+  .solution-header {
+    font-size: 15px; font-weight: 600; margin-bottom: 4px;
+  }
+  .solution-sub {
+    font-size: 12px; color: var(--text-3); margin-bottom: 14px;
+  }
+  .step-list { list-style: none; }
+  .step-row {
+    display: flex; gap: 12px; padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+    align-items: flex-start;
+  }
+  .step-row:last-child { border-bottom: none; }
+  .step-num {
+    font-family: var(--mono); font-size: 11px;
+    color: var(--accent); min-width: 20px; padding-top: 1px;
+  }
+  .step-text { font-size: 13px; line-height: 1.5; }
+
+  /* No match */
+  .no-match-box {
+    text-align: center; padding: 20px;
+  }
+  .no-match-icon { font-size: 28px; margin-bottom: 8px; }
+  .no-match-title { font-size: 14px; font-weight: 600; margin-bottom: 6px; }
+  .no-match-sub { font-size: 12px; color: var(--text-3); margin-bottom: 14px; }
+
+  /* Archive */
+  .archive-item {
+    padding: 14px 0; border-bottom: 1px solid var(--border);
+  }
+  .archive-item:last-child { border-bottom: none; }
+  .archive-time { font-size: 11px; color: var(--text-3); margin-bottom: 4px; }
+  .archive-text {
+    font-family: var(--mono); font-size: 12px;
+    background: var(--surface-2); border-radius: 6px;
+    padding: 8px 10px; margin: 6px 0;
+    white-space: pre-wrap; word-break: break-word;
+  }
+  .archive-meta { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+  .archive-tag {
+    font-size: 10px; padding: 2px 6px; border-radius: 4px;
+    background: var(--surface-2); color: var(--text-3);
+  }
+  .archive-tag.matched { background: var(--success-dim); color: var(--success); }
+  .archive-tag.unmatched { background: var(--danger-dim); color: var(--danger); }
+
+  /* Library */
+  .lib-item {
+    display: flex; justify-content: space-between;
+    align-items: flex-start; padding: 12px 0;
+    border-bottom: 1px solid var(--border); gap: 12px;
+  }
+  .lib-item:last-child { border-bottom: none; }
+  .lib-title { font-size: 13px; font-weight: 500; margin-bottom: 2px; }
+  .lib-code {
+    font-family: var(--mono); font-size: 11px;
+    color: var(--accent); margin-right: 6px;
+  }
+  .lib-pattern { font-size: 11px; color: var(--text-3); }
+
+  /* Form */
+  .field { margin-bottom: 12px; }
+  .field label { font-size: 11px; color: var(--text-3); display: block; margin-bottom: 4px; text-transform: uppercase; letter-spacing: .04em; }
+  .field input, .field textarea, .field select {
+    width: 100%; background: var(--surface-2);
+    border: 1px solid var(--border-strong); border-radius: 8px;
+    padding: 8px 10px; font-size: 13px; color: var(--text);
+    font-family: var(--font);
+  }
+  .field textarea { resize: vertical; min-height: 80px; }
+  .field input:focus, .field textarea:focus, .field select:focus {
+    outline: none; border-color: var(--accent);
+  }
+
+  /* Empty state */
+  .empty {
+    text-align: center; padding: 32px;
+    color: var(--text-3); font-size: 13px;
+  }
+  .empty-icon { font-size: 24px; margin-bottom: 8px; }
+
+  /* Feedback */
+  .feedback-row {
+    display: flex; gap: 8px; align-items: center;
+    margin-top: 14px; padding-top: 14px;
+    border-top: 1px solid var(--border);
+  }
+  .feedback-label { font-size: 12px; color: var(--text-3); }
+  .feedback-btn {
+    padding: 5px 12px; border-radius: 6px; font-size: 12px;
+    cursor: pointer; border: 1px solid var(--border-strong);
+    background: none; color: var(--text-2); transition: all .15s;
+  }
+  .feedback-btn:hover { border-color: var(--accent); color: var(--accent); }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-logo">IFS</div>
+  <div class="header-title">IFS Error Assistant</div>
+  <div id="catalogStatus" class="catalog-status loading">Loading catalog...</div>
+  <div class="header-sub" id="catalogCount"></div>
+</div>
+
+<div class="app">
+  <nav class="sidebar">
+    <button class="nav-item active" data-tab="troubleshoot">
+      <span class="nav-icon">🔍</span> Troubleshoot
+    </button>
+    <button class="nav-item" data-tab="archive">
+      <span class="nav-icon">🗂</span> Archive
+      <span class="nav-badge" id="archiveBadge">0</span>
+    </button>
+    <button class="nav-item" data-tab="library">
+      <span class="nav-icon">📚</span> Solution library
+    </button>
+    <button class="nav-item" data-tab="catalog">
+      <span class="nav-icon">⚙️</span> Error catalog
+    </button>
+  </nav>
+
+  <main class="main">
+    <div id="tab-troubleshoot"></div>
+    <div id="tab-archive" style="display:none"></div>
+    <div id="tab-library" style="display:none"></div>
+    <div id="tab-catalog" style="display:none"></div>
+  </main>
+</div>
+
+<script>
+const CATALOG_URL = "https://raw.githubusercontent.com/Ella-SD/ifs-error-catalog/main/IFS%20Error%20Catalog%20from%20API%20and%20SVC.csv";
+const LIBRARY_KEY = "solution_library_v2";
+const ARCHIVE_KEY = "error_archive_v2";
+
+let catalog = [];       // full 53K error catalog in memory
+let library = [];       // curated solutions
+let archive = [];       // every submission
+let currentImage = null;
+let currentImageType = null;
+
+// ── CSV Parser ──────────────────────────────────────────────
+function parseCSV(text) {
+  const lines = text.split('\n');
+  const headers = parseCSVLine(lines[0]);
+  const rows = [];
+  for (let i = 1; i < lines.length; i++) {
+    if (!lines[i].trim()) continue;
+    const vals = parseCSVLine(lines[i]);
+    if (vals.length < 5) continue;
+    const row = {};
+    headers.forEach((h, idx) => row[h.toUpperCase()] = (vals[idx] || '').replace(/^"|"$/g, '').trim());
+    rows.push(row);
+  }
+  return rows;
+}
+
+function parseCSVLine(line) {
+  const result = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    if (line[i] === '"') {
+      inQuotes = !inQuotes;
+    } else if (line[i] === ',' && !inQuotes) {
+      result.push(current);
+      current = '';
+    } else {
+      current += line[i];
+    }
+  }
+  result.push(current);
+  return result;
+}
+
+// ── JavaScript Matching Engine ───────────────────────────────
+function normalizeText(text) {
+  if (!text) return '';
+  // Replace dynamic parameters :P1, :P2 etc with a wildcard marker
+  return text.toLowerCase()
+    .replace(/:\w+/g, '')         // remove :P1 :P2 etc
+    .replace(/\b\d+\b/g, '')      // remove standalone numbers
+    .replace(/[^a-z\s]/g, ' ')    // keep only letters and spaces
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function scoreMatch(extractedNorm, catalogErrorNorm) {
+  if (!catalogErrorNorm || !extractedNorm) return 0;
+  
+  // Word overlap scoring
+  const extractedWords = new Set(extractedNorm.split(' ').filter(w => w.length > 3));
+  const catalogWords = new Set(catalogErrorNorm.split(' ').filter(w => w.length > 3));
+  
+  if (extractedWords.size === 0 || catalogWords.size === 0) return 0;
+  
+  let matches = 0;
+  extractedWords.forEach(w => { if (catalogWords.has(w)) matches++; });
+  
+  const precision = matches / extractedWords.size;
+  const recall = matches / catalogWords.size;
+  
+  if (precision + recall === 0) return 0;
+  return 2 * (precision * recall) / (precision + recall); // F1 score
+}
+
+function findCatalogMatches(extractedText, topN = 5) {
+  if (!extractedText || catalog.length === 0) return [];
+  
+  const extractedNorm = normalizeText(extractedText);
+  const scored = [];
+  
+  // First pass: look for error code match (exact)
+  const words = extractedText.toUpperCase().split(/\W+/);
+  const codeMatches = catalog.filter(row => 
+    row.ERROR_CODE && words.includes(row.ERROR_CODE.toUpperCase())
+  );
+  
+  if (codeMatches.length > 0) {
+    // Exact error code match — high confidence
+    return codeMatches.slice(0, topN).map(row => ({ row, score: 1.0, matchType: 'code' }));
+  }
+  
+  // Second pass: fuzzy text matching
+  const sample = catalog.length > 10000 
+    ? catalog.filter((_, i) => i % 2 === 0)  // sample every other row for speed
+    : catalog;
+    
+  for (const row of sample) {
+    const score = scoreMatch(extractedNorm, normalizeText(row.ERROR_TEXT));
+    if (score > 0.3) scored.push({ row, score, matchType: 'fuzzy' });
+  }
+  
+  return scored.sort((a, b) => b.score - a.score).slice(0, topN);
+}
+
+// ── Storage ──────────────────────────────────────────────────
+async function loadLibrary() {
+  try {
+    const r = await window.storage.get(LIBRARY_KEY, false);
+    library = r ? JSON.parse(r.value) : [];
+  } catch { library = []; }
+  if (library.length === 0) {
+    library = [{
+      id: 'seed1',
+      error_code: 'DELETENOTPERMITTED',
+      component: 'Procurement',
+      title: 'Deletion not permitted when status is Confirmed',
+      who_acts: 'Buyer or Procurement Admin',
+      instructions: [
+        'Open the Purchase Order and check the current status — it must be Confirmed.',
+        'To delete a PO line, first change the PO status back to Planned by clicking the Plan button.',
+        'Once the status is Planned, select the line you want to delete and click Delete.',
+        'If you cannot change the status, contact your Procurement Admin — the PO may be locked for approval.'
+      ]
+    }];
+    await saveLibrary();
+  }
+}
+
+async function loadArchive() {
+  try {
+    const r = await window.storage.get(ARCHIVE_KEY, false);
+    archive = r ? JSON.parse(r.value) : [];
+  } catch { archive = []; }
+  updateArchiveBadge();
+}
+
+async function saveLibrary() {
+  try { await window.storage.set(LIBRARY_KEY, JSON.stringify(library), false); } catch {}
+}
+
+async function saveArchive() {
+  try { await window.storage.set(ARCHIVE_KEY, JSON.stringify(archive), false); } catch {}
+  updateArchiveBadge();
+}
+
+function updateArchiveBadge() {
+  document.getElementById('archiveBadge').textContent = archive.length;
+}
+
+// ── Load Error Catalog from GitHub ───────────────────────────
+async function loadCatalog() {
+  const statusEl = document.getElementById('catalogStatus');
+  const countEl = document.getElementById('catalogCount');
+  try {
+    statusEl.className = 'catalog-status loading';
+    statusEl.textContent = 'Loading catalog...';
+    const resp = await fetch(CATALOG_URL);
+    if (!resp.ok) throw new Error('Failed to fetch');
+    const text = await resp.text();
+    catalog = parseCSV(text);
+    statusEl.className = 'catalog-status';
+    statusEl.textContent = `${catalog.length.toLocaleString()} errors loaded`;
+    countEl.textContent = 'IFS 10 Error Catalog';
+  } catch (e) {
+    statusEl.className = 'catalog-status error';
+    statusEl.textContent = 'Catalog unavailable';
+    countEl.textContent = 'Working in offline mode';
+  }
+}
+
+// ── Tab Navigation ────────────────────────────────────────────
+document.querySelectorAll('.nav-item').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const tab = btn.dataset.tab;
+    ['troubleshoot', 'archive', 'library', 'catalog'].forEach(t => {
+      document.getElementById('tab-' + t).style.display = t === tab ? '' : 'none';
+    });
+    if (tab === 'archive') renderArchive();
+    if (tab === 'library') renderLibrary();
+    if (tab === 'catalog') renderCatalog();
+  });
+});
+
+// ── TROUBLESHOOT TAB ──────────────────────────────────────────
+function renderTroubleshoot() {
+  const el = document.getElementById('tab-troubleshoot');
+  el.innerHTML = `
+    <div class="card">
+      <div class="card-title">Upload error screenshot</div>
+      <div id="dropzone" class="drop-zone">
+        <div class="drop-icon">📸</div>
+        <div class="drop-title">Drop your IFS error screenshot here</div>
+        <div class="drop-sub">Tip: zoom in on the error dialog before screenshotting for best accuracy</div>
+      </div>
+      <input type="file" id="fileInput" accept="image/png,image/jpeg" style="display:none">
+      <div id="previewArea" style="display:none;margin-top:16px">
+        <img id="previewImg" class="preview-img">
+        <div class="btn-row">
+          <button class="btn btn-primary" id="analyzeBtn">🔍 Analyze error</button>
+          <button class="btn btn-ghost" id="clearBtn">Choose different image</button>
+        </div>
+      </div>
+    </div>
+    <div id="resultArea"></div>
+  `;
+
+  const dropzone = document.getElementById('dropzone');
+  const fileInput = document.getElementById('fileInput');
+  const previewArea = document.getElementById('previewArea');
+  const previewImg = document.getElementById('previewImg');
+
+  dropzone.addEventListener('click', () => fileInput.click());
+  dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag'); });
+  dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag'));
+  dropzone.addEventListener('drop', e => {
+    e.preventDefault(); dropzone.classList.remove('drag');
+    if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+  });
+  fileInput.addEventListener('change', e => { if (e.target.files[0]) handleFile(e.target.files[0]); });
+
+  function handleFile(file) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      currentImage = reader.result.split(',')[1];
+      currentImageType = file.type || 'image/png';
+      previewImg.src = reader.result;
+      dropzone.style.display = 'none';
+      previewArea.style.display = 'block';
+      document.getElementById('resultArea').innerHTML = '';
+    };
+    reader.readAsDataURL(file);
+  }
+
+  document.getElementById('clearBtn').addEventListener('click', () => {
+    currentImage = null;
+    dropzone.style.display = 'block';
+    previewArea.style.display = 'none';
+    document.getElementById('resultArea').innerHTML = '';
+    fileInput.value = '';
+  });
+
+  document.getElementById('analyzeBtn').addEventListener('click', analyzeError);
+}
+
+async function analyzeError() {
+  const btn = document.getElementById('analyzeBtn');
+  const resultArea = document.getElementById('resultArea');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span> Step 1: Reading error text...';
+  resultArea.innerHTML = '';
+
+  try {
+    // STEP 1: Extract error text from screenshot (vision only, no catalog)
+    const extractResp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 1000,
+        system: `You are an OCR specialist reading IFS ERP error screenshots.
+Your ONLY job is to extract the exact text from the error dialog box.
+
+RULES:
+- Read ONLY text inside the error dialog/popup (purple/colored header with X icon)
+- Transcribe EXACTLY — every word, abbreviation, code (W/D/R, ID, No, etc.)
+- Also note: the screen/page title visible at the top of the IFS window
+- Do NOT paraphrase or guess unclear words — write [unclear] instead
+- Ignore all other screen content (menus, field labels, data)
+
+Respond ONLY with raw JSON (no markdown):
+{"error_text": "exact error message verbatim", "screen_name": "IFS screen title if visible", "dialog_title": "error dialog title"}`,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: currentImageType, data: currentImage } },
+            { type: 'text', text: 'Extract the exact error text from this IFS screenshot.' }
+          ]
+        }]
+      })
+    });
+
+    const extractData = await extractResp.json();
+    if (extractData.error) throw new Error(extractData.error.message);
+    const textBlock = extractData.content.find(b => b.type === 'text');
+    if (!textBlock) throw new Error('No response from model');
+
+    let raw = textBlock.text.replace(/```json|```/g, '').trim();
+    const fb = raw.indexOf('{'); const lb = raw.lastIndexOf('}');
+    if (fb !== -1 && lb !== -1) raw = raw.slice(fb, lb + 1);
+    let extracted;
+    try { extracted = JSON.parse(raw); } catch { extracted = { error_text: textBlock.text }; }
+    if (!extracted.error_text) extracted.error_text = '(no text detected)';
+
+    // STEP 2: JavaScript catalog matching (no API call)
+    btn.innerHTML = '<span class="spin"></span> Step 2: Searching catalog...';
+    const catalogMatches = findCatalogMatches(extracted.error_text);
+
+    // STEP 3: Check solution library for direct match
+    btn.innerHTML = '<span class="spin"></span> Step 3: Finding solution...';
+    const libMatch = library.find(l =>
+      extracted.error_text.toLowerCase().includes(l.error_code.toLowerCase()) ||
+      extracted.error_text.toLowerCase().includes(l.title.toLowerCase().substring(0, 20))
+    );
+
+    // STEP 4: Claude confirms best catalog match (tiny API call — just top 5 candidates)
+    let confirmedMatch = null;
+    if (catalogMatches.length > 0) {
+      const confirmResp = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 500,
+          system: `You are matching an extracted IFS error message to its catalog entry.
+Given the extracted error text and top candidate matches, pick the best match.
+Respond ONLY with raw JSON: {"best_match_index": 0, "confidence": "high"|"medium"|"low"|"none", "reasoning": "one sentence"}`,
+          messages: [{
+            role: 'user',
+            content: `Extracted error: "${extracted.error_text}"
+
+Top catalog candidates:
+${catalogMatches.map((m, i) => `${i}: [${m.row.ERROR_CODE}] ${m.row.ERROR_TEXT} (${m.row.COMPONENT_NAME})`).join('\n')}
+
+Which candidate best matches the extracted error?`
+          }]
+        })
+      });
+
+      const confirmData = await confirmResp.json();
+      if (!confirmData.error) {
+        const confirmBlock = confirmData.content.find(b => b.type === 'text');
+        if (confirmBlock) {
+          let cr = confirmBlock.text.replace(/```json|```/g, '').trim();
+          const cf = cr.indexOf('{'); const cl = cr.lastIndexOf('}');
+          if (cf !== -1 && cl !== -1) cr = cr.slice(cf, cl + 1);
+          try {
+            const confirmed = JSON.parse(cr);
+            if (confirmed.confidence !== 'none' && catalogMatches[confirmed.best_match_index]) {
+              confirmedMatch = { ...catalogMatches[confirmed.best_match_index], confidence: confirmed.confidence };
+            }
+          } catch {}
+        }
+      }
+    }
+
+    // Archive the submission
+    const entry = {
+      id: 'a' + Date.now(),
+      timestamp: new Date().toISOString(),
+      error_text: extracted.error_text,
+      screen_name: extracted.screen_name || null,
+      catalog_match: confirmedMatch ? {
+        error_code: confirmedMatch.row.ERROR_CODE,
+        component: confirmedMatch.row.COMPONENT_NAME,
+        package: confirmedMatch.row.PACKAGE_NAME,
+        confidence: confirmedMatch.confidence
+      } : null,
+      lib_match: libMatch ? libMatch.id : null
+    };
+    archive.unshift(entry);
+    await saveArchive();
+
+    renderResult(extracted, confirmedMatch, libMatch);
+
+  } catch (err) {
+    resultArea.innerHTML = `<div class="card"><div class="empty"><div class="empty-icon">⚠️</div>${escHtml(err.message || 'Something went wrong')}</div></div>`;
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '🔍 Analyze error';
+  }
+}
+
+function renderResult(extracted, catalogMatch, libMatch) {
+  const resultArea = document.getElementById('resultArea');
+
+  const extractedHtml = `
+    <div class="extracted-label">
+      Text read from screenshot
+      <span class="saved-tag">✓ Archived</span>
+    </div>
+    <div class="extracted-box">${escHtml(extracted.error_text)}</div>
+    ${extracted.screen_name ? `<div style="font-size:11px;color:var(--text-3);margin-bottom:12px">📍 Screen: <b style="color:var(--text-2)">${escHtml(extracted.screen_name)}</b></div>` : ''}
+  `;
+
+  // If we have a library solution — show it directly
+  if (libMatch) {
+    resultArea.innerHTML = `
+      <div class="card">
+        <span class="match-badge high">✓ Solution found in library</span>
+        ${extractedHtml}
+        ${catalogMatch ? renderCatalogMatchInfo(catalogMatch) : ''}
+        <div class="solution-header">${escHtml(libMatch.title)}</div>
+        <div class="solution-sub">📦 ${escHtml(libMatch.component)} &nbsp;·&nbsp; 👤 Resolved by: ${escHtml(libMatch.who_acts)}</div>
+        <ul class="step-list">
+          ${libMatch.instructions.map((s, i) => `
+            <li class="step-row">
+              <span class="step-num">${i + 1}.</span>
+              <span class="step-text">${escHtml(s)}</span>
+            </li>`).join('')}
+        </ul>
+        ${renderFeedback()}
+      </div>`;
+    return;
+  }
+
+  // Catalog match but no library solution yet
+  if (catalogMatch && (catalogMatch.confidence === 'high' || catalogMatch.confidence === 'medium')) {
+    resultArea.innerHTML = `
+      <div class="card">
+        <span class="match-badge ${catalogMatch.confidence}">⚡ Catalog match — ${catalogMatch.confidence} confidence</span>
+        ${extractedHtml}
+        ${renderCatalogMatchInfo(catalogMatch)}
+        ${renderVerification(catalogMatch)}
+        <div class="solution-sub" style="margin-top:12px;color:var(--warning)">
+          ⚠️ No curated solution yet for this error. Add one in the Solution Library tab, or escalate to a consultant.
+        </div>
+        <div class="btn-row" style="margin-top:12px">
+          <button class="btn btn-primary" onclick="switchToAddSolution('${escHtml(catalogMatch.row.ERROR_CODE)}', '${escHtml(catalogMatch.row.COMPONENT_NAME)}')">+ Add solution</button>
+        </div>
+      </div>`;
+    return;
+  }
+
+  // No match
+  resultArea.innerHTML = `
+    <div class="card">
+      <span class="match-badge none">✗ No match found</span>
+      ${extractedHtml}
+      <div class="no-match-box">
+        <div class="no-match-icon">🔎</div>
+        <div class="no-match-title">This error isn't in the catalog yet</div>
+        <div class="no-match-sub">Add it to the solution library or escalate to a consultant.</div>
+        <button class="btn btn-primary" onclick="switchToAddSolution('', '')">+ Add to library</button>
+      </div>
+    </div>`;
+}
+
+function renderCatalogMatchInfo(match) {
+  return `
+    <div class="catalog-match">
+      <div class="catalog-match-row">
+        <span class="cm-label">Error code</span>
+        <span class="cm-code">${escHtml(match.row.ERROR_CODE)}</span>
+      </div>
+      <div class="catalog-match-row">
+        <span class="cm-label">Module</span>
+        <span class="cm-value">${escHtml(match.row.COMPONENT_NAME)}</span>
+      </div>
+      <div class="catalog-match-row">
+        <span class="cm-label">Package</span>
+        <span class="cm-value" style="font-family:var(--mono);font-size:11px">${escHtml(match.row.PACKAGE_NAME)}</span>
+      </div>
+      <div class="catalog-match-row">
+        <span class="cm-label">IFS version</span>
+        <span class="cm-value">${escHtml(match.row.IFS_VERSION)}</span>
+      </div>
+    </div>`;
+}
+
+function renderVerification(match) {
+  const componentPlain = match.row.COMPONENT_NAME;
+  return `
+    <div class="verify-box">
+      <div class="verify-question">Was this error in the <b>${escHtml(componentPlain)}</b> module?</div>
+      <div class="verify-btns">
+        <button class="verify-btn yes" onclick="this.closest('.verify-box').remove()">✓ Yes, correct</button>
+        <button class="verify-btn no" onclick="this.closest('.verify-box').innerHTML='<div style=\\'font-size:12px;color:var(--text-3)\\'>Thanks — this helps improve matching.</div>'">✗ No, different module</button>
+      </div>
+    </div>`;
+}
+
+function renderFeedback() {
+  return `
+    <div class="feedback-row">
+      <span class="feedback-label">Did this solve your issue?</span>
+      <button class="feedback-btn" onclick="this.parentElement.innerHTML='<span style=\\'font-size:12px;color:var(--success)\\'>✓ Great, glad it helped!</span>'">✓ Yes</button>
+      <button class="feedback-btn" onclick="this.parentElement.innerHTML='<span style=\\'font-size:12px;color:var(--warning)\\'>Thanks — we\\'ll improve this solution.</span>'">✗ No</button>
+    </div>`;
+}
+
+function switchToAddSolution(errorCode, component) {
+  document.querySelector('[data-tab="library"]').click();
+  setTimeout(() => {
+    document.getElementById('showAddBtn')?.click();
+    if (errorCode) {
+      const inp = document.getElementById('newErrorCode');
+      if (inp) inp.value = errorCode;
+    }
+    if (component) {
+      const inp = document.getElementById('newComponent');
+      if (inp) inp.value = component;
+    }
+  }, 100);
+}
+
+// ── ARCHIVE TAB ───────────────────────────────────────────────
+function renderArchive() {
+  const el = document.getElementById('tab-archive');
+  if (archive.length === 0) {
+    el.innerHTML = `<div class="card"><div class="empty"><div class="empty-icon">🗂</div>No errors archived yet. Upload a screenshot to get started.</div></div>`;
+    return;
+  }
+  el.innerHTML = `
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <div class="card-title" style="margin-bottom:0">${archive.length} archived error${archive.length !== 1 ? 's' : ''}</div>
+        <button class="btn-danger" id="clearArchiveBtn">Clear all</button>
+      </div>
+      ${archive.map(e => {
+        const d = new Date(e.timestamp);
+        const dateStr = d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+        return `
+          <div class="archive-item">
+            <div class="archive-time">🕐 ${escHtml(dateStr)}${e.screen_name ? ` &nbsp;·&nbsp; 📍 ${escHtml(e.screen_name)}` : ''}</div>
+            <div class="archive-text">${escHtml(e.error_text)}</div>
+            <div class="archive-meta">
+              ${e.catalog_match
+                ? `<span class="archive-tag matched">✓ ${escHtml(e.catalog_match.error_code)} · ${escHtml(e.catalog_match.component)}</span>
+                   <span class="archive-tag">${escHtml(e.catalog_match.confidence)} confidence</span>`
+                : `<span class="archive-tag unmatched">✗ No catalog match</span>`}
+              ${e.lib_match ? `<span class="archive-tag matched">✓ Solution in library</span>` : ''}
+            </div>
+          </div>`;
+      }).join('')}
+    </div>`;
+  document.getElementById('clearArchiveBtn').addEventListener('click', async () => {
+    archive = []; await saveArchive(); renderArchive();
+  });
+}
+
+// ── LIBRARY TAB ───────────────────────────────────────────────
+function renderLibrary() {
+  const el = document.getElementById('tab-library');
+  el.innerHTML = `
+    <div class="card">
+      <button class="btn btn-primary" id="showAddBtn">+ Add solution</button>
+      <div id="addForm" style="display:none;margin-top:16px;border-top:1px solid var(--border);padding-top:16px">
+        <div class="field"><label>Error code (from catalog)</label><input id="newErrorCode" placeholder="e.g. DELETENOTPERMITTED"></div>
+        <div class="field"><label>IFS Module / Component</label><input id="newComponent" placeholder="e.g. Procurement"></div>
+        <div class="field"><label>Title (plain English)</label><input id="newTitle" placeholder="What this error means"></div>
+        <div class="field"><label>Who needs to act</label><input id="newWho" placeholder="e.g. Buyer, Finance team, IT Admin"></div>
+        <div class="field"><label>Fix steps (one per line)</label><textarea id="newSteps" placeholder="Step one...&#10;Step two..."></textarea></div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-primary" id="saveBtn">Save solution</button>
+          <button class="btn btn-ghost" id="cancelBtn">Cancel</button>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Solutions (${library.length})</div>
+      <div id="libList"></div>
+    </div>`;
+
+  document.getElementById('showAddBtn').addEventListener('click', () => {
+    document.getElementById('addForm').style.display = 'block';
+  });
+  document.getElementById('cancelBtn').addEventListener('click', () => {
+    document.getElementById('addForm').style.display = 'none';
+  });
+  document.getElementById('saveBtn').addEventListener('click', async () => {
+    const code = document.getElementById('newErrorCode').value.trim();
+    const comp = document.getElementById('newComponent').value.trim();
+    const title = document.getElementById('newTitle').value.trim();
+    const who = document.getElementById('newWho').value.trim();
+    const steps = document.getElementById('newSteps').value.split('\n').map(s => s.trim()).filter(Boolean);
+    if (!title || steps.length === 0) return;
+    library.push({ id: 'l' + Date.now(), error_code: code || '—', component: comp, title, who_acts: who, instructions: steps });
+    await saveLibrary();
+    renderLibrary();
+  });
+  renderLibList();
+}
+
+function renderLibList() {
+  const el = document.getElementById('libList');
+  if (library.length === 0) {
+    el.innerHTML = `<div class="empty"><div class="empty-icon">📚</div>No solutions added yet.</div>`;
+    return;
+  }
+  el.innerHTML = library.map(l => `
+    <div class="lib-item">
+      <div style="flex:1">
+        <div class="lib-title">
+          <span class="lib-code">${escHtml(l.error_code)}</span>${escHtml(l.title)}
+        </div>
+        <div class="lib-pattern">📦 ${escHtml(l.component)} &nbsp;·&nbsp; 👤 ${escHtml(l.who_acts || '—')}</div>
+      </div>
+      <button class="btn-danger" data-del="${l.id}">🗑</button>
+    </div>`).join('');
+  el.querySelectorAll('[data-del]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      library = library.filter(l => l.id !== btn.dataset.del);
+      await saveLibrary();
+      renderLibList();
+    });
+  });
+}
+
+// ── CATALOG TAB ───────────────────────────────────────────────
+function renderCatalog() {
+  const el = document.getElementById('tab-catalog');
+  if (catalog.length === 0) {
+    el.innerHTML = `<div class="card"><div class="empty"><div class="empty-icon">⚙️</div>Catalog not loaded yet. Check your connection.</div></div>`;
+    return;
+  }
+
+  // Get unique components
+  const components = [...new Set(catalog.map(r => r.COMPONENT_NAME).filter(Boolean))].sort();
+  const stats = {};
+  catalog.forEach(r => { stats[r.COMPONENT_NAME] = (stats[r.COMPONENT_NAME] || 0) + 1; });
+
+  el.innerHTML = `
+    <div class="card">
+      <div class="card-title">IFS 10 Error Catalog — ${catalog.length.toLocaleString()} errors</div>
+      <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+        <input id="catalogSearch" placeholder="Search error text or code..." style="flex:1;min-width:200px;background:var(--surface-2);border:1px solid var(--border-strong);border-radius:8px;padding:8px 10px;font-size:13px;color:var(--text)">
+        <select id="catalogFilter" style="background:var(--surface-2);border:1px solid var(--border-strong);border-radius:8px;padding:8px 10px;font-size:13px;color:var(--text)">
+          <option value="">All modules</option>
+          ${components.map(c => `<option value="${escHtml(c)}">${escHtml(c)} (${stats[c] || 0})</option>`).join('')}
+        </select>
+      </div>
+      <div id="catalogResults"></div>
+    </div>`;
+
+  function searchCatalog() {
+    const q = document.getElementById('catalogSearch').value.toLowerCase();
+    const f = document.getElementById('catalogFilter').value;
+    const results = catalog.filter(r =>
+      (!f || r.COMPONENT_NAME === f) &&
+      (!q || r.ERROR_TEXT?.toLowerCase().includes(q) || r.ERROR_CODE?.toLowerCase().includes(q))
+    ).slice(0, 50);
+
+    const el2 = document.getElementById('catalogResults');
+    if (results.length === 0) {
+      el2.innerHTML = `<div class="empty">No matching errors found.</div>`;
+      return;
+    }
+    el2.innerHTML = `
+      <div style="font-size:11px;color:var(--text-3);margin-bottom:8px">Showing ${results.length} of ${catalog.filter(r => (!f || r.COMPONENT_NAME === f) && (!q || r.ERROR_TEXT?.toLowerCase().includes(q) || r.ERROR_CODE?.toLowerCase().includes(q))).length} results</div>
+      ${results.map(r => `
+        <div style="padding:10px 0;border-bottom:1px solid var(--border)">
+          <div style="display:flex;gap:8px;align-items:center;margin-bottom:3px">
+            <span style="font-family:var(--mono);font-size:11px;color:var(--accent)">${escHtml(r.ERROR_CODE)}</span>
+            <span style="font-size:11px;color:var(--text-3)">${escHtml(r.COMPONENT_NAME)}</span>
+          </div>
+          <div style="font-size:12px;color:var(--text)">${escHtml(r.ERROR_TEXT)}</div>
+          <div style="font-size:10px;color:var(--text-3);margin-top:2px">${escHtml(r.PACKAGE_NAME)}</div>
+        </div>`).join('')}`;
+  }
+
+  document.getElementById('catalogSearch').addEventListener('input', searchCatalog);
+  document.getElementById('catalogFilter').addEventListener('change', searchCatalog);
+  searchCatalog();
+}
+
+// ── Utilities ────────────────────────────────────────────────
+function escHtml(str) {
+  const d = document.createElement('div');
+  d.textContent = str == null ? '' : String(str);
+  return d.innerHTML;
+}
+
+// ── Init ─────────────────────────────────────────────────────
+Promise.all([loadCatalog(), loadLibrary(), loadArchive()])
+  .then(renderTroubleshoot);
+</script>
+</body>
+</html>
