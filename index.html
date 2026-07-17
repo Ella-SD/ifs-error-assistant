@@ -732,7 +732,6 @@ Which candidate best matches the extracted error?`
       error_text: extracted.error_text,
       screen_name: extracted.screen_name || null,
       activity: activityContext || null,
-      screenshot: currentImageSrc,
       catalog_match: confirmedMatch ? {
         error_code: confirmedMatch.row.ERROR_CODE,
         component: confirmedMatch.row.COMPONENT_NAME,
@@ -745,6 +744,12 @@ Which candidate best matches the extracted error?`
     await saveArchive();
 
     renderResult(extracted, confirmedMatch, libMatch, debugInfo);
+
+    // Set screenshot in technical details after render
+    setTimeout(() => {
+      const techImg = document.getElementById('techScreenshot');
+      if (techImg && currentImageSrc) techImg.src = currentImageSrc;
+    }, 100);
 
   } catch (err) {
     resultArea.innerHTML = `<div class="card"><div class="empty"><div class="empty-icon">⚠️</div>${escHtml(err.message || 'Something went wrong')}</div></div>`;
@@ -857,7 +862,9 @@ function renderTechToggle(match) {
           </div>
           <div class="catalog-match-row" style="align-items:flex-start;margin-top:8px">
             <span class="cm-label">Screenshot</span>
-            <img src="${currentImageSrc}" style="max-width:100%;max-height:300px;border-radius:6px;border:1px solid var(--border);margin-top:4px">
+            <div style="flex:1">
+              <img id="techScreenshot" style="max-width:100%;max-height:300px;border-radius:6px;border:1px solid var(--border);margin-top:4px">
+            </div>
           </div>
         </div>
       </div>
