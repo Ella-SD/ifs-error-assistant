@@ -630,7 +630,7 @@ async function analyzeError() {
 
   try {
     // STEP 1: Extract error text from screenshot (vision only, no catalog)
-    const extractResp = await fetch('https://api.anthropic.com/v1/messages', {
+    const extractResp = await fetch('https://ifs-error-assistant-proxy.vercel.app/api/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -684,7 +684,7 @@ Respond ONLY with raw JSON (no markdown):
     // STEP 4: Claude confirms best catalog match (tiny API call — just top 5 candidates)
     let confirmedMatch = null;
     if (catalogMatches.length > 0) {
-      const confirmResp = await fetch('https://api.anthropic.com/v1/messages', {
+      const confirmResp = await fetch('https://ifs-error-assistant-proxy.vercel.app/api/messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
