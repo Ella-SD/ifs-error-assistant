@@ -560,11 +560,13 @@ function renderTroubleshoot() {
       <div class="card-title">Upload error screenshot</div>
       <div id="dropzone" class="drop-zone">
         <div class="drop-icon">📸</div>
-        <div class="drop-title">Drop your IFS error screenshot here</div>
+        <div class="drop-title">Drop your IFS error screenshot here or click to upload</div>
         <div class="drop-sub">Tip: zoom in on the error dialog before screenshotting for best accuracy</div>
       </div>
-      <input type="file" id="fileInput" accept="image/png,image/jpeg" style="display:none">
-      <div id="previewArea" style="display:none;margin-top:16px">
+      <input type="file" id="fileInput" accept="image/png,image/jpeg,image/jpg" style="display:none">
+    </div>
+    <div id="previewCard" style="display:none">
+      <div class="card">
         <img id="previewImg" class="preview-img">
         <div class="field" style="margin-bottom:12px">
           <label>What were you trying to do when this error appeared? <span style="color:var(--text-3)">(optional but helps with troubleshooting)</span></label>
@@ -581,7 +583,7 @@ function renderTroubleshoot() {
 
   const dropzone = document.getElementById('dropzone');
   const fileInput = document.getElementById('fileInput');
-  const previewArea = document.getElementById('previewArea');
+  const previewCard = document.getElementById('previewCard');
   const previewImg = document.getElementById('previewImg');
 
   dropzone.addEventListener('click', () => fileInput.click());
@@ -598,10 +600,10 @@ function renderTroubleshoot() {
     reader.onload = () => {
       currentImage = reader.result.split(',')[1];
       currentImageType = file.type || 'image/png';
-      currentImageSrc = reader.result;  // save full data URL
+      currentImageSrc = reader.result;
       previewImg.src = reader.result;
-      dropzone.style.display = 'none';
-      previewArea.style.display = 'block';
+      dropzone.closest('.card').style.display = 'none';
+      previewCard.style.display = 'block';
       document.getElementById('resultArea').innerHTML = '';
     };
     reader.readAsDataURL(file);
@@ -609,10 +611,13 @@ function renderTroubleshoot() {
 
   document.getElementById('clearBtn').addEventListener('click', () => {
     currentImage = null;
-    dropzone.style.display = 'block';
-    previewArea.style.display = 'none';
+    currentImageSrc = null;
+    dropzone.closest('.card').style.display = 'block';
+    previewCard.style.display = 'none';
     document.getElementById('resultArea').innerHTML = '';
     fileInput.value = '';
+    const ai = document.getElementById('activityInput');
+    if (ai) ai.value = '';
   });
 
   document.getElementById('analyzeBtn').addEventListener('click', analyzeError);
