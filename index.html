@@ -556,7 +556,7 @@ document.querySelectorAll('.nav-item').forEach(btn => {
 function renderTroubleshoot() {
   const el = document.getElementById('tab-troubleshoot');
   el.innerHTML = `
-    <div class="card">
+    <div id="uploadCard" class="card">
       <div class="card-title">Upload error screenshot</div>
       <div id="dropzone" class="drop-zone">
         <div class="drop-icon">📸</div>
@@ -602,7 +602,7 @@ function renderTroubleshoot() {
       currentImageType = file.type || 'image/png';
       currentImageSrc = reader.result;
       previewImg.src = reader.result;
-      dropzone.closest('.card').style.display = 'none';
+      document.getElementById('uploadCard').style.display = 'none';
       previewCard.style.display = 'block';
       document.getElementById('resultArea').innerHTML = '';
     };
@@ -612,7 +612,7 @@ function renderTroubleshoot() {
   document.getElementById('clearBtn').addEventListener('click', () => {
     currentImage = null;
     currentImageSrc = null;
-    dropzone.closest('.card').style.display = 'block';
+    document.getElementById('uploadCard').style.display = 'block';
     previewCard.style.display = 'none';
     document.getElementById('resultArea').innerHTML = '';
     fileInput.value = '';
