@@ -564,15 +564,13 @@ function renderTroubleshoot() {
         <div class="drop-sub">Tip: zoom in on the error dialog before screenshotting for best accuracy</div>
       </div>
       <input type="file" id="fileInput" accept="image/png,image/jpeg,image/jpg" style="display:none">
-    </div>
-    <div id="previewCard" style="display:none">
-      <div class="card">
-        <img id="previewImg" class="preview-img">
-        <div class="field" style="margin-bottom:12px">
-          <label>What were you trying to do when this error appeared? <span style="color:var(--text-3)">(optional but helps with troubleshooting)</span></label>
-          <input id="activityInput" placeholder="e.g. trying to delete a PO line, adding a new receipt, releasing a shop order...">
+      <div id="previewSection" style="display:none;margin-top:12px">
+        <img id="previewImg" style="max-width:100%;max-height:280px;border-radius:8px;border:1px solid var(--border);display:block;margin:0 auto 14px">
+        <div style="margin-bottom:10px">
+          <div style="font-size:11px;color:var(--text-3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">What were you trying to do when this error appeared? <span style="text-transform:none">(optional)</span></div>
+          <input id="activityInput" placeholder="e.g. trying to delete a PO line, adding a new receipt..." style="width:100%;background:var(--surface-2);border:1px solid var(--border-strong);border-radius:8px;padding:8px 10px;font-size:13px;color:var(--text);box-sizing:border-box">
         </div>
-        <div class="btn-row">
+        <div style="display:flex;gap:8px;justify-content:center">
           <button class="btn btn-primary" id="analyzeBtn">🔍 Analyze error</button>
           <button class="btn btn-ghost" id="clearBtn">Choose different image</button>
         </div>
@@ -583,7 +581,7 @@ function renderTroubleshoot() {
 
   const dropzone = document.getElementById('dropzone');
   const fileInput = document.getElementById('fileInput');
-  const previewCard = document.getElementById('previewCard');
+  const previewSection = document.getElementById('previewSection');
   const previewImg = document.getElementById('previewImg');
 
   dropzone.addEventListener('click', () => fileInput.click());
@@ -602,8 +600,8 @@ function renderTroubleshoot() {
       currentImageType = file.type || 'image/png';
       currentImageSrc = reader.result;
       previewImg.src = reader.result;
-      document.getElementById('uploadCard').style.display = 'none';
-      previewCard.style.display = 'block';
+      dropzone.style.display = 'none';
+      previewSection.style.display = 'block';
       document.getElementById('resultArea').innerHTML = '';
     };
     reader.readAsDataURL(file);
@@ -612,8 +610,9 @@ function renderTroubleshoot() {
   document.getElementById('clearBtn').addEventListener('click', () => {
     currentImage = null;
     currentImageSrc = null;
-    document.getElementById('uploadCard').style.display = 'block';
-    previewCard.style.display = 'none';
+    dropzone.style.display = 'block';
+    previewSection.style.display = 'none';
+    previewImg.src = '';
     document.getElementById('resultArea').innerHTML = '';
     fileInput.value = '';
     const ai = document.getElementById('activityInput');
