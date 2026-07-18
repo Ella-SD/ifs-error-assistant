@@ -375,7 +375,7 @@
 
 <script>
 const CATALOG_URL = "https://raw.githubusercontent.com/Ella-SD/ifs-error-catalog/main/IFS%20Error%20Catalog%20from%20API%20and%20SVC.csv";
-const LIBRARY_KEY = "solution_library_v2";
+const LIBRARY_KEY = "solution_library_v3";
 const ARCHIVE_KEY = "error_archive_v2";
 
 let catalog = [];       // full 53K error catalog in memory
@@ -478,19 +478,173 @@ async function loadLibrary() {
     library = r ? JSON.parse(r.value) : [];
   } catch { library = []; }
   if (library.length === 0) {
-    library = [{
-      id: 'seed1',
-      error_code: 'DELETENOTPERMITTED',
-      component: 'Procurement',
-      title: 'Deletion not permitted when status is Confirmed',
-      who_acts: 'Buyer or Procurement Admin',
-      instructions: [
-        'Open the Purchase Order and check the current status — it must be Confirmed.',
-        'To delete a PO line, first change the PO status back to Planned by clicking the Plan button.',
-        'Once the status is Planned, select the line you want to delete and click Delete.',
-        'If you cannot change the status, contact your Procurement Admin — the PO may be locked for approval.'
-      ]
-    }];
+    library = [
+      {
+        id: 'seed1',
+        error_code: 'DELETENOTPERMITTED',
+        lu_name: 'PurchaseOrderLinePart',
+        package_name: 'PURCHASE_ORDER_LINE_PART_API',
+        component_code: 'PURCH',
+        component_name: 'Procurement',
+        error_template: 'Deletion not permitted when status is :P1',
+        ifs_version: 'IFS10',
+        title: 'Deletion not permitted when status is Confirmed',
+        who_acts: 'Buyer or Procurement Admin',
+        status: 'DRAFT',
+        times_served: 0, times_accepted: 0, times_rejected: 0,
+        added_date: new Date().toISOString(),
+        instructions: [
+          'Open the Purchase Order and check the current status — it must be Confirmed.',
+          'To delete a PO line, first change the PO status back to Planned by clicking the Plan button.',
+          'Once the status is Planned, select the line you want to delete and click Delete.',
+          'If you cannot change the status, contact your Procurement Admin — the PO may be locked for approval.'
+        ]
+      },
+      {
+        id: 'seed2',
+        error_code: 'SAMEORDEREXIST',
+        lu_name: 'CustomerOrderFlow',
+        package_name: 'CUSTOMER_ORDER_FLOW_API',
+        component_code: 'ORDER',
+        component_name: 'Customer Orders',
+        error_template: 'The customer order :P1 has already been processed by another user and added to the background job :P2.',
+        ifs_version: 'IFS10',
+        title: 'Customer order already processed by another user',
+        who_acts: 'Buyer or Production Control',
+        status: 'NO_INSTRUCTION',
+        times_served: 0, times_accepted: 0, times_rejected: 0,
+        added_date: new Date().toISOString(),
+        instructions: []
+      },
+      {
+        id: 'seed3',
+        error_code: 'WRONGCOMPANY',
+        lu_name: 'AbcFrequencyLifecycle',
+        package_name: 'ABC_FREQUENCY_LIFECYCLE_API',
+        component_code: 'INVENT',
+        component_name: 'Inventory',
+        error_template: 'Site :P1 does not belong to company :P2.',
+        ifs_version: 'IFS10',
+        title: 'Site does not belong to company',
+        who_acts: 'IT Admin or IFS System Administrator',
+        status: 'NO_INSTRUCTION',
+        times_served: 0, times_accepted: 0, times_rejected: 0,
+        added_date: new Date().toISOString(),
+        instructions: []
+      },
+      {
+        id: 'seed4',
+        error_code: 'ACCYEARNOTOPEN',
+        lu_name: 'AccountingPeriod',
+        package_name: 'ACCOUNTING_PERIOD_API',
+        component_code: 'ACCRUL',
+        component_name: 'Accounting Rules',
+        error_template: 'Accounting year is not open. Therefore Accounting period(s) cannot be created.',
+        ifs_version: 'IFS10',
+        title: 'Accounting year is not open',
+        who_acts: 'Finance Team',
+        status: 'NO_INSTRUCTION',
+        times_served: 0, times_accepted: 0, times_rejected: 0,
+        added_date: new Date().toISOString(),
+        instructions: []
+      },
+      {
+        id: 'seed5',
+        error_code: 'PERIODCLOSED',
+        lu_name: 'PeriodAllocation',
+        package_name: 'PERIOD_ALLOCATION_API',
+        component_code: 'ACCRUL',
+        component_name: 'Accounting Rules',
+        error_template: 'One or more period(s) in the interval are closed for user group :P1.',
+        ifs_version: 'IFS10',
+        title: 'Accounting period is closed',
+        who_acts: 'Finance Team',
+        status: 'NO_INSTRUCTION',
+        times_served: 0, times_accepted: 0, times_rejected: 0,
+        added_date: new Date().toISOString(),
+        instructions: []
+      },
+      {
+        id: 'seed6',
+        error_code: 'NODIRECTINSERT',
+        lu_name: 'AccountingAttribute',
+        package_name: 'ACCOUNTING_ATTRIBUTE_API',
+        component_code: 'ACCRUL',
+        component_name: 'Accounting Rules',
+        error_template: 'A record cannot be entered/modified as :P1 window has been set up for copying data only from source company in Basic Data Synchronization window.',
+        ifs_version: 'IFS10',
+        title: 'Record cannot be entered — Basic Data Synchronization restriction',
+        who_acts: 'Finance Team or IT Admin',
+        status: 'NO_INSTRUCTION',
+        times_served: 0, times_accepted: 0, times_rejected: 0,
+        added_date: new Date().toISOString(),
+        instructions: []
+      },
+      {
+        id: 'seed7',
+        error_code: 'NODIRECTREMOVE',
+        lu_name: 'AccountingAttribute',
+        package_name: 'ACCOUNTING_ATTRIBUTE_API',
+        component_code: 'ACCRUL',
+        component_name: 'Accounting Rules',
+        error_template: 'A record cannot be removed as :P1 window has been set up for copying data only from source company in Basic Data Synchronization window.',
+        ifs_version: 'IFS10',
+        title: 'Record cannot be removed — Basic Data Synchronization restriction',
+        who_acts: 'Finance Team or IT Admin',
+        status: 'NO_INSTRUCTION',
+        times_served: 0, times_accepted: 0, times_rejected: 0,
+        added_date: new Date().toISOString(),
+        instructions: []
+      },
+      {
+        id: 'seed8',
+        error_code: 'WRONGABCSUM',
+        lu_name: 'AbcClass',
+        package_name: 'ABC_CLASS_API',
+        component_code: 'INVENT',
+        component_name: 'Inventory',
+        error_template: 'The sum of the percentages must be 100.',
+        ifs_version: 'IFS10',
+        title: 'ABC class percentages do not add up to 100',
+        who_acts: 'Inventory Planner',
+        status: 'NO_INSTRUCTION',
+        times_served: 0, times_accepted: 0, times_rejected: 0,
+        added_date: new Date().toISOString(),
+        instructions: []
+      },
+      {
+        id: 'seed9',
+        error_code: 'NOVALYP',
+        lu_name: 'PeriodAllocRuleLine',
+        package_name: 'PERIOD_ALLOC_RULE_LINE_API',
+        component_code: 'ACCRUL',
+        component_name: 'Accounting Rules',
+        error_template: 'Not a valid Accounting Year / Period',
+        ifs_version: 'IFS10',
+        title: 'Invalid accounting year or period entered',
+        who_acts: 'Finance Team',
+        status: 'NO_INSTRUCTION',
+        times_served: 0, times_accepted: 0, times_rejected: 0,
+        added_date: new Date().toISOString(),
+        instructions: []
+      },
+      {
+        id: 'seed10',
+        error_code: 'USERGRPDATEERROR',
+        lu_name: 'AccountingPeriod',
+        package_name: 'ACCOUNTING_PERIOD_API',
+        component_code: 'ACCRUL',
+        component_name: 'Accounting Rules',
+        error_template: 'User Group :P1 is not valid for Voucher Date :P2',
+        ifs_version: 'IFS10',
+        title: 'User group not valid for the voucher date',
+        who_acts: 'Finance Team',
+        status: 'NO_INSTRUCTION',
+        times_served: 0, times_accepted: 0, times_rejected: 0,
+        added_date: new Date().toISOString(),
+        instructions: []
+      }
+    ];
     await saveLibrary();
   }
 }
@@ -676,19 +830,12 @@ Respond ONLY with raw JSON (no markdown):
     btn.innerHTML = '<span class="spin"></span> Step 2: Searching catalog...';
     const catalogMatches = findCatalogMatches(extracted.error_text);
 
-    // STEP 3: Check solution library for direct match
-    btn.innerHTML = '<span class="spin"></span> Step 3: Finding solution...';
-    const libMatch = library.find(l =>
-      extracted.error_text.toLowerCase().includes(l.error_code.toLowerCase()) ||
-      extracted.error_text.toLowerCase().includes(l.title.toLowerCase().substring(0, 20))
-    );
-
     // Debug: show matching info
     const catalogSample = catalog.slice(0, 2).map(r => r.ERROR_TEXT).join(' | ');
     const debugInfo = `Static words: [${getStaticWords(extracted.error_text).join(', ')}]\nCatalog size: ${catalog.length}\nCatalog sample: ${catalogSample}\nMatches found: ${catalogMatches.length}\nTop: ${catalogMatches[0] ? catalogMatches[0].row.ERROR_CODE + ' score:' + catalogMatches[0].score.toFixed(2) : 'none'}`;
     console.log(debugInfo);
 
-    // STEP 4: Claude confirms best catalog match (tiny API call — just top 5 candidates)
+    // STEP 3: Claude confirms best catalog match
     let confirmedMatch = null;
     if (catalogMatches.length > 0) {
       const confirmResp = await fetch('https://ifs-error-assistant-proxy.vercel.app/api/messages', {
@@ -726,6 +873,27 @@ Which candidate best matches the extracted error?`
             }
           } catch {}
         }
+      }
+    }
+
+    // STEP 3: Check solution library using error_code from catalog match
+    const libMatch = confirmedMatch
+      ? library.find(l =>
+          l.error_code === confirmedMatch.row.ERROR_CODE &&
+          l.instructions && l.instructions.length > 0
+        )
+      : library.find(l =>
+          l.instructions && l.instructions.length > 0 &&
+          extracted.error_text.toLowerCase().includes(l.error_code.toLowerCase())
+        );
+
+    // Update served count and status
+    if (libMatch) {
+      const idx = library.findIndex(l => l.id === libMatch.id);
+      if (idx !== -1) {
+        library[idx].times_served = (library[idx].times_served || 0) + 1;
+        if (library[idx].status === 'DRAFT') library[idx].status = 'UNVERIFIED';
+        await saveLibrary();
       }
     }
 
@@ -784,7 +952,7 @@ function renderResult(extracted, catalogMatch, libMatch, debugInfo) {
         <span class="match-badge high">✓ Solution found</span>
         ${extractedHtml}
         <div class="solution-header">${escHtml(libMatch.title)}</div>
-        <div class="solution-sub">📦 ${escHtml(libMatch.component)} &nbsp;·&nbsp; 👤 ${escHtml(libMatch.who_acts)}</div>
+        <div class="solution-sub">📦 ${escHtml(libMatch.component_name || libMatch.component || '—')} &nbsp;·&nbsp; 👤 ${escHtml(libMatch.who_acts)}</div>
         <ul class="step-list">
           ${libMatch.instructions.map((s, i) => `
             <li class="step-row">
@@ -793,7 +961,7 @@ function renderResult(extracted, catalogMatch, libMatch, debugInfo) {
             </li>`).join('')}
         </ul>
         ${catalogMatch ? renderTechToggle(catalogMatch) : ''}
-        ${renderFeedback()}
+        ${renderFeedback(libMatch.id)}
       </div>`;
     return;
   }
@@ -891,13 +1059,33 @@ function renderVerification(match) {
     </div>`;
 }
 
-function renderFeedback() {
+function renderFeedback(libMatchId) {
+  const id = libMatchId || '';
   return `
     <div class="feedback-row">
       <span class="feedback-label">Did this solve your issue?</span>
-      <button class="feedback-btn" onclick="this.parentElement.innerHTML='<span style=\\'font-size:12px;color:var(--success)\\'>✓ Great, glad it helped!</span>'">✓ Yes</button>
-      <button class="feedback-btn" onclick="this.parentElement.innerHTML='<span style=\\'font-size:12px;color:var(--warning)\\'>Thanks — we\\'ll improve this solution.</span>'">✗ No</button>
+      <button class="feedback-btn" onclick="recordFeedback('${id}', true, this)">✓ Yes</button>
+      <button class="feedback-btn" onclick="recordFeedback('${id}', false, this)">✗ No</button>
     </div>`;
+}
+
+async function recordFeedback(libMatchId, accepted, btn) {
+  btn.parentElement.innerHTML = accepted
+    ? '<span style="font-size:12px;color:var(--success)">✓ Great, glad it helped!</span>'
+    : '<span style="font-size:12px;color:var(--warning)">Thanks — we\'ll improve this solution.</span>';
+  if (!libMatchId) return;
+  const idx = library.findIndex(l => l.id === libMatchId);
+  if (idx === -1) return;
+  if (accepted) {
+    library[idx].times_accepted = (library[idx].times_accepted || 0) + 1;
+    library[idx].status = 'VERIFIED';
+    library[idx].last_verified = new Date().toISOString();
+  } else {
+    library[idx].times_rejected = (library[idx].times_rejected || 0) + 1;
+    const rate = library[idx].times_accepted / library[idx].times_served;
+    if (library[idx].times_served >= 3 && rate < 0.3) library[idx].status = 'NEEDS_REVIEW';
+  }
+  await saveLibrary();
 }
 
 function switchToAddSolution(errorCode, component) {
@@ -987,10 +1175,40 @@ function renderLibrary() {
     const title = document.getElementById('newTitle').value.trim();
     const who = document.getElementById('newWho').value.trim();
     const steps = document.getElementById('newSteps').value.split('\n').map(s => s.trim()).filter(Boolean);
+    const editId = document.getElementById('newErrorCode').dataset.editId;
     if (!title || steps.length === 0) return;
-    library.push({ id: 'l' + Date.now(), error_code: code || '—', component: comp, title, who_acts: who, instructions: steps });
+
+    if (editId) {
+      const idx = library.findIndex(l => l.id === editId);
+      if (idx !== -1) {
+        library[idx].instructions = steps;
+        library[idx].who_acts = who;
+        library[idx].title = title;
+        library[idx].status = 'DRAFT';
+        library[idx].added_date = new Date().toISOString();
+      }
+      delete document.getElementById('newErrorCode').dataset.editId;
+    } else {
+      const catalogEntry = catalog.find(r => r.ERROR_CODE === code);
+      library.push({
+        id: 'l' + Date.now(),
+        error_code: code || '—',
+        lu_name: catalogEntry?.LU_NAME || '',
+        package_name: catalogEntry?.PACKAGE_NAME || '',
+        component_code: catalogEntry?.COMPONENT_CODE || '',
+        component_name: comp || catalogEntry?.COMPONENT_NAME || '',
+        error_template: catalogEntry?.ERROR_TEXT || '',
+        ifs_version: catalogEntry?.IFS_VERSION || 'IFS10',
+        title, who_acts: who,
+        status: 'DRAFT',
+        times_served: 0, times_accepted: 0, times_rejected: 0,
+        added_date: new Date().toISOString(),
+        instructions: steps
+      });
+    }
     await saveLibrary();
-    renderLibrary();
+    document.getElementById('addForm').style.display = 'none';
+    renderLibList();
   });
   renderLibList();
 }
@@ -1001,21 +1219,60 @@ function renderLibList() {
     el.innerHTML = `<div class="empty"><div class="empty-icon">📚</div>No solutions added yet.</div>`;
     return;
   }
-  el.innerHTML = library.map(l => `
+
+  const statusColors = {
+    'NO_INSTRUCTION': { bg: 'var(--surface-2)', color: 'var(--text-3)', label: 'No instruction' },
+    'DRAFT':          { bg: 'var(--warning-dim)', color: 'var(--warning)', label: 'Draft' },
+    'UNVERIFIED':     { bg: 'var(--accent-dim)', color: 'var(--accent)', label: 'Unverified' },
+    'VERIFIED':       { bg: 'var(--success-dim)', color: 'var(--success)', label: 'Verified ✓' },
+    'REJECTED':       { bg: 'var(--danger-dim)', color: 'var(--danger)', label: 'Needs review' },
+  };
+
+  el.innerHTML = library.map(l => {
+    const s = statusColors[l.status] || statusColors['NO_INSTRUCTION'];
+    const acceptRate = l.times_served > 0 ? Math.round((l.times_accepted / l.times_served) * 100) + '%' : '—';
+    return `
     <div class="lib-item">
       <div style="flex:1">
-        <div class="lib-title">
-          <span class="lib-code">${escHtml(l.error_code)}</span>${escHtml(l.title)}
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;flex-wrap:wrap">
+          <span class="lib-code">${escHtml(l.error_code)}</span>
+          <span style="font-size:13px;font-weight:500">${escHtml(l.title)}</span>
+          <span style="font-size:10px;font-weight:600;padding:2px 7px;border-radius:999px;background:${s.bg};color:${s.color}">${s.label}</span>
         </div>
-        <div class="lib-pattern">📦 ${escHtml(l.component)} &nbsp;·&nbsp; 👤 ${escHtml(l.who_acts || '—')}</div>
+        <div style="font-size:11px;color:var(--text-3);display:flex;gap:12px;flex-wrap:wrap">
+          <span>📦 ${escHtml(l.component_name || l.component || '—')}</span>
+          <span style="font-family:var(--mono)">${escHtml(l.package_name || '—')}</span>
+          <span>👤 ${escHtml(l.who_acts || '—')}</span>
+          <span>Served: ${l.times_served || 0} · Accepted: ${l.times_accepted || 0} · Rate: ${acceptRate}</span>
+        </div>
+        ${l.error_template ? `<div style="font-size:11px;color:var(--text-3);font-style:italic;margin-top:2px">${escHtml(l.error_template)}</div>` : ''}
       </div>
-      <button class="btn-danger" data-del="${l.id}">🗑</button>
-    </div>`).join('');
+      <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
+        ${l.instructions && l.instructions.length > 0 ? '' : `<button class="btn btn-ghost" style="font-size:11px;padding:4px 8px" data-add="${l.id}">+ Add steps</button>`}
+        <button class="btn-danger" data-del="${l.id}">🗑</button>
+      </div>
+    </div>`; 
+  }).join('');
+
   el.querySelectorAll('[data-del]').forEach(btn => {
     btn.addEventListener('click', async () => {
       library = library.filter(l => l.id !== btn.dataset.del);
       await saveLibrary();
       renderLibList();
+    });
+  });
+
+  el.querySelectorAll('[data-add]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const item = library.find(l => l.id === btn.dataset.add);
+      if (!item) return;
+      document.getElementById('addForm').style.display = 'block';
+      document.getElementById('newErrorCode').value = item.error_code || '';
+      document.getElementById('newComponent').value = item.component_name || '';
+      document.getElementById('newTitle').value = item.title || '';
+      document.getElementById('newWho').value = item.who_acts || '';
+      document.getElementById('newSteps').value = '';
+      document.getElementById('newErrorCode').dataset.editId = item.id;
     });
   });
 }
