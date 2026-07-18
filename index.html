@@ -558,12 +558,14 @@ function renderTroubleshoot() {
   el.innerHTML = `
     <div id="uploadCard" class="card">
       <div class="card-title">Upload error screenshot</div>
-      <div id="dropzone" class="drop-zone">
-        <div class="drop-icon">📸</div>
-        <div class="drop-title">Drop your IFS error screenshot here or click to upload</div>
-        <div class="drop-sub">Tip: zoom in on the error dialog before screenshotting for best accuracy</div>
+      <div style="position:relative">
+        <div id="dropzone" class="drop-zone" style="cursor:pointer">
+          <div class="drop-icon">📸</div>
+          <div class="drop-title">Drop your IFS error screenshot here or click to upload</div>
+          <div class="drop-sub">Tip: zoom in on the error dialog before screenshotting for best accuracy</div>
+        </div>
+        <input type="file" id="fileInput" accept="image/png,image/jpeg,image/jpg" style="opacity:0;position:absolute;width:100%;height:100%;top:0;left:0;cursor:pointer">
       </div>
-      <input type="file" id="fileInput" accept="image/png,image/jpeg,image/jpg" style="display:none">
       <div id="previewSection" style="display:none;margin-top:12px">
         <img id="previewImg" style="max-width:100%;max-height:280px;border-radius:8px;border:1px solid var(--border);display:block;margin:0 auto 14px">
         <div style="margin-bottom:10px">
@@ -584,7 +586,11 @@ function renderTroubleshoot() {
   const previewSection = document.getElementById('previewSection');
   const previewImg = document.getElementById('previewImg');
 
-  dropzone.addEventListener('click', () => fileInput.click());
+  dropzone.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    fileInput.click();
+  });
   dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag'); });
   dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag'));
   dropzone.addEventListener('drop', e => {
