@@ -593,15 +593,16 @@ function renderTroubleshoot() {
   fileInput.addEventListener('change', e => { if (e.target.files[0]) handleFile(e.target.files[0]); });
 
   function handleFile(file) {
+    currentImageSrc = URL.createObjectURL(file);
+    previewImg.src = currentImageSrc;
+    dropzone.style.display = 'none';
+    previewSection.style.display = 'block';
+    document.getElementById('resultArea').innerHTML = '';
+
     const reader = new FileReader();
     reader.onload = () => {
       currentImage = reader.result.split(',')[1];
       currentImageType = file.type || 'image/png';
-      currentImageSrc = reader.result;
-      previewImg.src = reader.result;
-      dropzone.style.display = 'none';
-      previewSection.style.display = 'block';
-      document.getElementById('resultArea').innerHTML = '';
     };
     reader.readAsDataURL(file);
   }
