@@ -400,6 +400,22 @@
 const CATALOG_URL = "https://raw.githubusercontent.com/Ella-SD/ifs-error-catalog/main/IFS%20Error%20Catalog%20from%20API%20and%20SVC.csv";
 const LIBRARY_KEY = "solution_library_v3";
 const ARCHIVE_KEY = "error_archive_v2";
+const IFS_VERSION_KEY = "ifs_version_setting_v1";
+
+// Stand-in for a real account/profile field until Phase 2 accounts exist. Company
+// subscriptions will eventually set this once per company; personal-tier users will
+// set their own. For now it's one shared setting, persisted via storageGet/storageSet.
+const IFS_VERSION_OPTIONS = ["IFS 10", "IFS Cloud", "IFS Apps 9", "Not sure"];
+let ifsVersionSetting = null;
+
+async function loadIfsVersionSetting() {
+  ifsVersionSetting = await storageGet(IFS_VERSION_KEY);
+}
+
+async function saveIfsVersionSetting(v) {
+  ifsVersionSetting = v;
+  await storageSet(IFS_VERSION_KEY, v);
+}
 
 let catalog = [];       // full 53K error catalog in memory
 let library = [];       // curated solutions
@@ -495,10 +511,35 @@ function findCatalogMatches(extractedText, topN = 5) {
 }
 
 // ── Storage ──────────────────────────────────────────────────
+// window.storage only exists inside a Claude artifact preview — it is NOT a real
+// browser API. On the actual deployed site, it's undefined, so every call here
+// falls back to localStorage, which is a real API and actually persists on a
+// static site with no backend. Scope note: localStorage is per-browser/per-device,
+// not shared across users — a real shared library needs the Phase 2 database.
+async function storageGet(key) {
+  try {
+    if (window.storage && typeof window.storage.get === 'function') {
+      const r = await window.storage.get(key, false);
+      return r ? r.value : null;
+    }
+  } catch {}
+  try { return localStorage.getItem(key); } catch { return null; }
+}
+
+async function storageSet(key, value) {
+  try {
+    if (window.storage && typeof window.storage.set === 'function') {
+      await window.storage.set(key, value, false);
+      return;
+    }
+  } catch {}
+  try { localStorage.setItem(key, value); } catch {}
+}
+
 async function loadLibrary() {
   try {
-    const r = await window.storage.get(LIBRARY_KEY, false);
-    library = r ? JSON.parse(r.value) : [];
+    const v = await storageGet(LIBRARY_KEY);
+    library = v ? JSON.parse(v) : [];
   } catch { library = []; }
   if (library.length === 0) {
     library = [
@@ -708,18 +749,18 @@ async function loadLibrary() {
 
 async function loadArchive() {
   try {
-    const r = await window.storage.get(ARCHIVE_KEY, false);
-    archive = r ? JSON.parse(r.value) : [];
+    const v = await storageGet(ARCHIVE_KEY);
+    archive = v ? JSON.parse(v) : [];
   } catch { archive = []; }
   updateArchiveBadge();
 }
 
 async function saveLibrary() {
-  try { await window.storage.set(LIBRARY_KEY, JSON.stringify(library), false); } catch {}
+  await storageSet(LIBRARY_KEY, JSON.stringify(library));
 }
 
 async function saveArchive() {
-  try { await window.storage.set(ARCHIVE_KEY, JSON.stringify(archive), false); } catch {}
+  await storageSet(ARCHIVE_KEY, JSON.stringify(archive));
   updateArchiveBadge();
 }
 
@@ -767,9 +808,43 @@ document.querySelectorAll('.nav-item').forEach(btn => {
 });
 
 // ── TROUBLESHOOT TAB ──────────────────────────────────────────
+function renderVersionSettingCard() {
+  if (!ifsVersionSetting) {
+    return `
+    <div class="card" id="versionSettingCard">
+      <div class="card-title" style="margin-bottom:2px">Which IFS version does your company use?</div>
+      <div style="font-size:12px;color:var(--text-3);margin-bottom:10px">Asked once — we'll remember it. This catalog currently covers IFS 10 only, so this helps us tell you upfront if a mismatch is likely.</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${IFS_VERSION_OPTIONS.map(v => `<button class="btn btn-ghost" data-set-version="${escHtml(v)}" style="font-size:12px">${escHtml(v)}</button>`).join('')}
+      </div>
+    </div>`;
+  }
+  const mismatch = ifsVersionSetting !== 'IFS 10';
+  return `
+    <div style="display:flex;align-items:center;gap:8px;font-size:11px;color:var(--text-3);margin-bottom:14px">
+      🏷️ IFS version: <b style="color:var(--text-2)">${escHtml(ifsVersionSetting)}</b>
+      <button class="btn btn-ghost" id="changeVersionBtn" style="font-size:10px;padding:2px 7px">Change</button>
+      ${mismatch ? `<span style="color:var(--warning)">⚠️ This catalog currently only covers IFS 10 — expect more "no match" results on ${escHtml(ifsVersionSetting)}.</span>` : ''}
+    </div>`;
+}
+
+function wireVersionSettingCard(el) {
+  el.querySelectorAll('[data-set-version]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      await saveIfsVersionSetting(btn.dataset.setVersion);
+      renderTroubleshoot();
+    });
+  });
+  el.querySelector('#changeVersionBtn')?.addEventListener('click', async () => {
+    await saveIfsVersionSetting(null);
+    renderTroubleshoot();
+  });
+}
+
 function renderTroubleshoot() {
   const el = document.getElementById('tab-troubleshoot');
   el.innerHTML = `
+    ${renderVersionSettingCard()}
     <div class="card">
       <div class="card-title">Upload error screenshot</div>
       <label for="fileInput" id="dropzone" class="drop-zone" style="cursor:pointer;display:block">
@@ -834,6 +909,7 @@ function renderTroubleshoot() {
   });
 
   document.getElementById('analyzeBtn').addEventListener('click', analyzeError);
+  wireVersionSettingCard(el);
 }
 
 async function analyzeError() {
@@ -853,17 +929,21 @@ async function analyzeError() {
         model: 'claude-sonnet-4-6',
         max_tokens: 1000,
         system: `You are an OCR specialist reading IFS ERP error screenshots.
-Your ONLY job is to extract the exact text from the error dialog box.
+
+FIRST, determine whether this image actually shows an IFS application with a visible error message or dialog. It might not be — it could be an unrelated photo, a blank/loading screen, a different application entirely, or a valid IFS screen with no error currently showing. If there is no genuine IFS error dialog visible, set "is_ifs_error" to false and "error_text" to null — do NOT invent or guess an error message that isn't actually there.
+
+If there IS a visible IFS error dialog, your job is to extract the exact text from it.
 
 RULES:
 - Read ONLY text inside the error dialog/popup (purple/colored header with X icon)
 - Transcribe EXACTLY — every word, abbreviation, code (W/D/R, ID, No, etc.)
 - Also note: the screen/page title visible at the top of the IFS window
+- Also look for any visible indication of the IFS version or environment — e.g. a version number in the browser tab/title bar, a build number, "IFS Cloud", "IFS Apps 9/10", or an environment banner. Only report this if you can actually see it; do not guess.
 - Do NOT paraphrase or guess unclear words — write [unclear] instead
 - Ignore all other screen content (menus, field labels, data)
 
 Respond ONLY with raw JSON (no markdown):
-{"error_text": "exact error message verbatim", "screen_name": "IFS screen title if visible", "dialog_title": "error dialog title"}`,
+{"is_ifs_error": true|false, "error_text": "exact error message verbatim, or null if is_ifs_error is false", "screen_name": "IFS screen title if visible", "dialog_title": "error dialog title", "ifs_version_hint": "version/environment text if visible on screen, otherwise null", "note_if_invalid": "one short sentence explaining what the image actually shows, only if is_ifs_error is false"}`,
         messages: [{
           role: 'user',
           content: [
@@ -885,6 +965,24 @@ Respond ONLY with raw JSON (no markdown):
     let extracted;
     try { extracted = JSON.parse(raw); } catch { extracted = { error_text: textBlock.text }; }
     if (!extracted.error_text) extracted.error_text = '(no text detected)';
+
+    // Bail out early if this isn't actually an IFS error screenshot — don't waste a
+    // catalog match + confirmation call on a photo of a dog, a blank screen, etc.
+    if (extracted.is_ifs_error === false) {
+      resultArea.innerHTML = `
+        <div class="card">
+          <span class="match-badge none">🖼️ Doesn't look like an IFS error</span>
+          <div style="font-size:13px;color:var(--text);margin:10px 0">
+            ${escHtml(extracted.note_if_invalid || "This doesn't appear to show a visible IFS error message.")}
+          </div>
+          <div style="font-size:12px;color:var(--text-3);margin-bottom:14px">
+            Try uploading a screenshot that includes the actual error dialog or message box.
+          </div>
+          <button class="btn btn-primary" id="tryAgainBtn">Try another screenshot</button>
+        </div>`;
+      document.getElementById('tryAgainBtn').addEventListener('click', () => document.getElementById('clearBtn').click());
+      return;
+    }
 
     // STEP 2: JavaScript catalog matching (no API call)
     btn.innerHTML = '<span class="spin"></span> Step 2: Searching catalog...';
@@ -959,6 +1057,7 @@ Which candidate best matches the extracted error?`
       timestamp: new Date().toISOString(),
       error_text: extracted.error_text,
       screen_name: extracted.screen_name || null,
+      ifs_version_hint: extracted.ifs_version_hint || null,
       activity: activityContext || null,
       catalog_match: confirmedMatch ? {
         error_code: confirmedMatch.row.ERROR_CODE,
@@ -998,6 +1097,7 @@ function renderResult(extracted, catalogMatch, libMatch, debugInfo) {
     </div>
     <div class="extracted-box">${escHtml(extracted.error_text)}</div>
     ${extracted.screen_name ? `<div style="font-size:11px;color:var(--text-3);margin-bottom:4px">📍 Screen: <b style="color:var(--text-2)">${escHtml(extracted.screen_name)}</b></div>` : ''}
+    ${extracted.ifs_version_hint ? `<div style="font-size:11px;color:var(--text-3);margin-bottom:4px">🏷️ Version/environment seen on screen: <b style="color:var(--text-2)">${escHtml(extracted.ifs_version_hint)}</b> <span style="color:var(--text-3)">(catalog only covers IFS 10)</span></div>` : ''}
     ${activityContext ? `<div style="font-size:11px;color:var(--text-3);margin-bottom:12px">🎯 User was trying to: <b style="color:var(--text-2)">${escHtml(activityContext)}</b></div>` : ''}
   `;
 
@@ -1053,7 +1153,7 @@ function renderResult(extracted, catalogMatch, libMatch, debugInfo) {
         ${extractedHtml}
         ${renderVerification(catalogMatch)}
         <div style="margin-top:12px;font-size:13px;color:var(--text-3)">
-          This is the closest candidate found, but it's not a confident match — double-check the error code and text below before relying on it.
+          This is the closest candidate found, but it's not a confident match. Since IFS error text is a fixed system string (not user-typed), a mismatch like this is usually because the screenshot is from a different IFS version than this catalog (IFS 10 only) — double-check the version before assuming the text itself is wrong.
         </div>
         ${libMatch ? '' : `
         <div class="btn-row" style="margin-top:12px">
@@ -1078,7 +1178,7 @@ function renderResult(extracted, catalogMatch, libMatch, debugInfo) {
       <div class="no-match-box">
         <div class="no-match-icon">🔎</div>
         <div class="no-match-title">This text didn't match anything in the catalog</div>
-        <div class="no-match-sub">Could be an OCR misread, a genuinely uncataloged error, or a company-specific message. A couple of things you can still try:</div>
+        <div class="no-match-sub">Since IFS error text is a fixed system string, this most likely means the screenshot is from a different IFS version than this catalog covers (IFS 10 only) — check the version above if one was detected. Less commonly, it could be an OCR misread or a genuinely uncataloged error. A couple of things you can still try:</div>
         <div class="btn-row" style="margin-top:10px;justify-content:center;flex-wrap:wrap">
           ${extracted.error_text ? `<button class="btn btn-primary" id="assembleRawBtn">🪄 Search docs &amp; assemble a fix</button>` : ''}
           ${extracted.error_text ? `<button class="btn btn-ghost" id="askChatBtn">💬 Ask about this in chat</button>` : ''}
@@ -1355,7 +1455,7 @@ function renderArchive() {
         const dateStr = d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
         return `
           <div class="archive-item">
-            <div class="archive-time">🕐 ${escHtml(dateStr)}${e.screen_name ? ` &nbsp;·&nbsp; 📍 ${escHtml(e.screen_name)}` : ''}</div>
+            <div class="archive-time">🕐 ${escHtml(dateStr)}${e.screen_name ? ` &nbsp;·&nbsp; 📍 ${escHtml(e.screen_name)}` : ''}${e.ifs_version_hint ? ` &nbsp;·&nbsp; 🏷️ ${escHtml(e.ifs_version_hint)}` : ''}</div>
             ${e.activity ? `<div style="font-size:11px;color:var(--text-3);margin-bottom:4px">🎯 Was trying to: <b style="color:var(--text-2)">${escHtml(e.activity)}</b></div>` : ''}
             <div class="archive-text">${escHtml(e.error_text)}</div>
             ${e.screenshot ? `<img src="${e.screenshot}" style="max-width:100%;max-height:200px;border-radius:6px;border:1px solid var(--border);margin:6px 0">` : ''}
@@ -2152,7 +2252,7 @@ function normalizeStepList(steps) {
 }
 
 // ── Init ─────────────────────────────────────────────────────
-Promise.all([loadCatalog(), loadLibrary(), loadArchive()])
+Promise.all([loadCatalog(), loadLibrary(), loadArchive(), loadIfsVersionSetting()])
   .then(renderTroubleshoot);
 </script>
 </body>
