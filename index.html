@@ -396,25 +396,74 @@
   </main>
 </div>
 
+<!-- Phase 2 backend — Supabase client (publishable/anon key: public by design, RLS is the boundary) -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<style>
+  /* ── Auth gate (Phase 2) ── */
+  body:not(.app-ready) .header,
+  body:not(.app-ready) .app { display: none !important; }
+
+  .auth-gate {
+    position: fixed; inset: 0; z-index: 1000;
+    background: var(--bg);
+    display: flex; align-items: center; justify-content: center;
+    padding: 24px;
+  }
+  .auth-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); width: 100%; max-width: 400px; padding: 32px;
+  }
+  .auth-logo { font-weight: 700; font-size: 20px; color: var(--accent); margin-bottom: 4px; }
+  .auth-title { font-size: 18px; font-weight: 600; margin-bottom: 6px; }
+  .auth-sub { font-size: 13px; color: var(--text-2); margin-bottom: 20px; }
+  .auth-field { margin-bottom: 14px; }
+  .auth-field label { display: block; font-size: 12px; color: var(--text-2); margin-bottom: 5px; }
+  .auth-field input, .auth-field select {
+    width: 100%; padding: 10px 12px; background: var(--surface-2);
+    border: 1px solid var(--border); border-radius: 8px;
+    color: var(--text); font-size: 14px; font-family: var(--font);
+  }
+  .auth-btn {
+    width: 100%; padding: 11px; margin-top: 6px; background: var(--accent);
+    color: #fff; border: none; border-radius: 8px;
+    font-size: 14px; font-weight: 600; cursor: pointer;
+  }
+  .auth-btn:disabled { opacity: .6; cursor: default; }
+  .auth-toggle { margin-top: 14px; font-size: 13px; color: var(--text-2); text-align: center; }
+  .auth-toggle a { color: var(--accent); cursor: pointer; text-decoration: none; }
+  .auth-msg { font-size: 13px; margin-top: 12px; padding: 10px 12px; border-radius: 8px; }
+  .auth-msg.err { background: var(--danger-dim); color: var(--danger); }
+  .auth-msg.ok  { background: var(--success-dim); color: var(--success); }
+  .auth-userbar { display: flex; align-items: center; gap: 10px; margin-left: auto; font-size: 12px; color: var(--text-2); }
+  .auth-userbar button {
+    background: var(--surface-2); border: 1px solid var(--border);
+    color: var(--text-2); border-radius: 6px; padding: 4px 10px; cursor: pointer; font-size: 12px;
+  }
+</style>
+
+<div id="authGate" class="auth-gate" style="display:none"></div>
+
 <script>
 const CATALOG_URL = "https://raw.githubusercontent.com/Ella-SD/ifs-error-catalog/main/IFS%20Error%20Catalog%20from%20API%20and%20SVC.csv";
-const LIBRARY_KEY = "solution_library_v3";
-const ARCHIVE_KEY = "error_archive_v2";
-const IFS_VERSION_KEY = "ifs_version_setting_v1";
 
-// Stand-in for a real account/profile field until Phase 2 accounts exist. Company
-// subscriptions will eventually set this once per company; personal-tier users will
-// set their own. For now it's one shared setting, persisted via storageGet/storageSet.
-const IFS_VERSION_OPTIONS = ["IFS 10", "IFS Cloud", "IFS Apps 9", "Not sure"];
+// IFS version now lives on the company record (companies.ifs_version), set at
+// onboarding and editable by a company_admin. Values match the onboarding dropdown.
+const IFS_VERSION_OPTIONS = ["IFS10", "IFS Cloud", "IFS Apps 9", "Not sure"];
 let ifsVersionSetting = null;
 
 async function loadIfsVersionSetting() {
-  ifsVersionSetting = await storageGet(IFS_VERSION_KEY);
+  // Platform admins have no company, so it stays null for them.
+  ifsVersionSetting = company ? (company.ifs_version || null) : null;
 }
 
 async function saveIfsVersionSetting(v) {
-  ifsVersionSetting = v;
-  await storageSet(IFS_VERSION_KEY, v);
+  ifsVersionSetting = v;   // local; also called with null to re-open the picker
+  if (v && company) {
+    const { error } = await sb.from('companies').update({ ifs_version: v }).eq('id', company.id);
+    if (error) console.error('saveIfsVersion', error);   // e.g. a company_member (not admin)
+    else company.ifs_version = v;
+  }
 }
 
 let catalog = [];       // full 53K error catalog in memory
@@ -510,259 +559,91 @@ function findCatalogMatches(extractedText, topN = 5) {
   return scored.sort((a, b) => b.score - a.score).slice(0, topN);
 }
 
-// ── Storage ──────────────────────────────────────────────────
-// window.storage only exists inside a Claude artifact preview — it is NOT a real
-// browser API. On the actual deployed site, it's undefined, so every call here
-// falls back to localStorage, which is a real API and actually persists on a
-// static site with no backend. Scope note: localStorage is per-browser/per-device,
-// not shared across users — a real shared library needs the Phase 2 database.
-async function storageGet(key) {
-  try {
-    if (window.storage && typeof window.storage.get === 'function') {
-      const r = await window.storage.get(key, false);
-      return r ? r.value : null;
-    }
-  } catch {}
-  try { return localStorage.getItem(key); } catch { return null; }
+// ── Data layer (Supabase) ────────────────────────────────────
+// Phase 2: the solution library and archive now live in Postgres behind RLS,
+// not localStorage. (The old window.storage/localStorage fallback was removed.)
+
+// Map a Supabase `solutions` row to the shape the existing UI expects.
+function mapSolutionRow(r) {
+  return {
+    id: r.id,
+    error_code: r.error_code,
+    lu_name: r.lu_name || '',
+    package_name: r.package_name || '',
+    component_code: r.component_code || '',
+    component_name: r.component_name || '',
+    error_template: r.error_template || '',
+    ifs_version: r.ifs_version || 'IFS10',
+    title: r.title,
+    who_acts: r.who_acts || '',
+    status: r.status,
+    source: r.source || 'ADMIN',
+    reject_note: r.reject_note || '',
+    times_served: r.times_served || 0,
+    times_accepted: r.times_accepted || 0,
+    times_rejected: r.times_rejected || 0,
+    added_date: r.created_at,
+    published_date: r.published_at,
+    last_verified: r.last_verified,
+    contributed_by_user_id: r.contributed_by_user_id || null,
+    assembled_sources: r.assembled_sources || [],
+    instructions: Array.isArray(r.instructions) ? r.instructions : []
+  };
 }
 
-async function storageSet(key, value) {
-  try {
-    if (window.storage && typeof window.storage.set === 'function') {
-      await window.storage.set(key, value, false);
-      return;
-    }
-  } catch {}
-  try { localStorage.setItem(key, value); } catch {}
-}
-
+// Load the shared solutions the current user is allowed to see (RLS decides:
+// live rows for everyone, own drafts for the contributor, everything for a
+// platform_admin).
 async function loadLibrary() {
-  try {
-    const v = await storageGet(LIBRARY_KEY);
-    library = v ? JSON.parse(v) : [];
-  } catch { library = []; }
-  if (library.length === 0) {
-    library = [
-      {
-        id: 'seed1',
-        error_code: 'DELETENOTPERMITTED',
-        lu_name: 'PurchaseOrderLinePart',
-        package_name: 'PURCHASE_ORDER_LINE_PART_API',
-        component_code: 'PURCH',
-        component_name: 'Procurement',
-        error_template: 'Deletion not permitted when status is :P1',
-        ifs_version: 'IFS10',
-        title: 'Deletion not permitted when status is Confirmed',
-        who_acts: 'Buyer or Procurement Admin',
-        status: 'PUBLISHED',
-        source: 'ADMIN',
-        reject_note: '',
-        times_served: 0, times_accepted: 0, times_rejected: 0,
-        added_date: new Date().toISOString(),
-        instructions: [
-          'Open the Purchase Order and check the current status — it must be Confirmed.',
-          'To delete a PO line, first change the PO status back to Planned by clicking the Plan button.',
-          'Once the status is Planned, select the line you want to delete and click Delete.',
-          'If you cannot change the status, contact your Procurement Admin — the PO may be locked for approval.'
-        ]
-      },
-      {
-        id: 'seed2',
-        error_code: 'SAMEORDEREXIST',
-        lu_name: 'CustomerOrderFlow',
-        package_name: 'CUSTOMER_ORDER_FLOW_API',
-        component_code: 'ORDER',
-        component_name: 'Customer Orders',
-        error_template: 'The customer order :P1 has already been processed by another user and added to the background job :P2.',
-        ifs_version: 'IFS10',
-        title: 'Customer order already processed by another user',
-        who_acts: 'Buyer or Production Control',
-        status: 'NO_INSTRUCTION',
-        source: 'ADMIN',
-        reject_note: '',
-        times_served: 0, times_accepted: 0, times_rejected: 0,
-        added_date: new Date().toISOString(),
-        instructions: []
-      },
-      {
-        id: 'seed3',
-        error_code: 'WRONGCOMPANY',
-        lu_name: 'AbcFrequencyLifecycle',
-        package_name: 'ABC_FREQUENCY_LIFECYCLE_API',
-        component_code: 'INVENT',
-        component_name: 'Inventory',
-        error_template: 'Site :P1 does not belong to company :P2.',
-        ifs_version: 'IFS10',
-        title: 'Site does not belong to company',
-        who_acts: 'IT Admin or IFS System Administrator',
-        status: 'NO_INSTRUCTION',
-        source: 'ADMIN',
-        reject_note: '',
-        times_served: 0, times_accepted: 0, times_rejected: 0,
-        added_date: new Date().toISOString(),
-        instructions: []
-      },
-      {
-        id: 'seed4',
-        error_code: 'ACCYEARNOTOPEN',
-        lu_name: 'AccountingPeriod',
-        package_name: 'ACCOUNTING_PERIOD_API',
-        component_code: 'ACCRUL',
-        component_name: 'Accounting Rules',
-        error_template: 'Accounting year is not open. Therefore Accounting period(s) cannot be created.',
-        ifs_version: 'IFS10',
-        title: 'Accounting year is not open',
-        who_acts: 'Finance Team',
-        status: 'NO_INSTRUCTION',
-        source: 'ADMIN',
-        reject_note: '',
-        times_served: 0, times_accepted: 0, times_rejected: 0,
-        added_date: new Date().toISOString(),
-        instructions: []
-      },
-      {
-        id: 'seed5',
-        error_code: 'PERIODCLOSED',
-        lu_name: 'PeriodAllocation',
-        package_name: 'PERIOD_ALLOCATION_API',
-        component_code: 'ACCRUL',
-        component_name: 'Accounting Rules',
-        error_template: 'One or more period(s) in the interval are closed for user group :P1.',
-        ifs_version: 'IFS10',
-        title: 'Accounting period is closed',
-        who_acts: 'Finance Team',
-        status: 'NO_INSTRUCTION',
-        source: 'ADMIN',
-        reject_note: '',
-        times_served: 0, times_accepted: 0, times_rejected: 0,
-        added_date: new Date().toISOString(),
-        instructions: []
-      },
-      {
-        id: 'seed6',
-        error_code: 'NODIRECTINSERT',
-        lu_name: 'AccountingAttribute',
-        package_name: 'ACCOUNTING_ATTRIBUTE_API',
-        component_code: 'ACCRUL',
-        component_name: 'Accounting Rules',
-        error_template: 'A record cannot be entered/modified as :P1 window has been set up for copying data only from source company in Basic Data Synchronization window.',
-        ifs_version: 'IFS10',
-        title: 'Record cannot be entered — Basic Data Synchronization restriction',
-        who_acts: 'Finance Team or IT Admin',
-        status: 'NO_INSTRUCTION',
-        source: 'ADMIN',
-        reject_note: '',
-        times_served: 0, times_accepted: 0, times_rejected: 0,
-        added_date: new Date().toISOString(),
-        instructions: []
-      },
-      {
-        id: 'seed7',
-        error_code: 'NODIRECTREMOVE',
-        lu_name: 'AccountingAttribute',
-        package_name: 'ACCOUNTING_ATTRIBUTE_API',
-        component_code: 'ACCRUL',
-        component_name: 'Accounting Rules',
-        error_template: 'A record cannot be removed as :P1 window has been set up for copying data only from source company in Basic Data Synchronization window.',
-        ifs_version: 'IFS10',
-        title: 'Record cannot be removed — Basic Data Synchronization restriction',
-        who_acts: 'Finance Team or IT Admin',
-        status: 'NO_INSTRUCTION',
-        source: 'ADMIN',
-        reject_note: '',
-        times_served: 0, times_accepted: 0, times_rejected: 0,
-        added_date: new Date().toISOString(),
-        instructions: []
-      },
-      {
-        id: 'seed8',
-        error_code: 'WRONGABCSUM',
-        lu_name: 'AbcClass',
-        package_name: 'ABC_CLASS_API',
-        component_code: 'INVENT',
-        component_name: 'Inventory',
-        error_template: 'The sum of the percentages must be 100.',
-        ifs_version: 'IFS10',
-        title: 'ABC class percentages do not add up to 100',
-        who_acts: 'Inventory Planner',
-        status: 'NO_INSTRUCTION',
-        source: 'ADMIN',
-        reject_note: '',
-        times_served: 0, times_accepted: 0, times_rejected: 0,
-        added_date: new Date().toISOString(),
-        instructions: []
-      },
-      {
-        id: 'seed9',
-        error_code: 'NOVALYP',
-        lu_name: 'PeriodAllocRuleLine',
-        package_name: 'PERIOD_ALLOC_RULE_LINE_API',
-        component_code: 'ACCRUL',
-        component_name: 'Accounting Rules',
-        error_template: 'Not a valid Accounting Year / Period',
-        ifs_version: 'IFS10',
-        title: 'Invalid accounting year or period entered',
-        who_acts: 'Finance Team',
-        status: 'NO_INSTRUCTION',
-        source: 'ADMIN',
-        reject_note: '',
-        times_served: 0, times_accepted: 0, times_rejected: 0,
-        added_date: new Date().toISOString(),
-        instructions: []
-      },
-      {
-        id: 'seed10',
-        error_code: 'USERGRPDATEERROR',
-        lu_name: 'AccountingPeriod',
-        package_name: 'ACCOUNTING_PERIOD_API',
-        component_code: 'ACCRUL',
-        component_name: 'Accounting Rules',
-        error_template: 'User Group :P1 is not valid for Voucher Date :P2',
-        ifs_version: 'IFS10',
-        title: 'User group not valid for the voucher date',
-        who_acts: 'Finance Team',
-        status: 'NO_INSTRUCTION',
-        source: 'ADMIN',
-        reject_note: '',
-        times_served: 0, times_accepted: 0, times_rejected: 0,
-        added_date: new Date().toISOString(),
-        instructions: []
-      }
-    ];
-    await saveLibrary();
+  const { data, error } = await sb.from('solutions').select('*').order('created_at', { ascending: true });
+  if (error) { console.error('loadLibrary', error); library = []; return; }
+  library = (data || []).map(mapSolutionRow);
+}
+
+// Deprecated: writes now go straight to Supabase. Kept as a no-op so any missed
+// caller doesn't throw; call loadLibrary() to refresh after a write.
+async function saveLibrary() { /* no-op */ }
+
+// Insert a new solution authored by the current user (RLS caps status at
+// non-live, and stamps contributed_by = the caller).
+async function insertSolution(fields) {
+  const row = Object.assign({ contributed_by_user_id: authUser.id }, fields);
+  const { data, error } = await sb.from('solutions').insert(row).select().maybeSingle();
+  if (error) throw error;
+  return data ? mapSolutionRow(data) : null;
+}
+
+
+// Map a Supabase archive_entries row to the shape renderArchive expects.
+// The catalog component is reconstructed from the client-side catalog by code.
+function mapArchiveRow(r) {
+  let catalog_match = null;
+  if (r.catalog_match_error_code) {
+    const cat = catalog.find(c => c.ERROR_CODE === r.catalog_match_error_code);
+    catalog_match = { error_code: r.catalog_match_error_code, component: cat ? cat.COMPONENT_NAME : '', confidence: r.match_confidence || '' };
   }
-
-  // One-time cleanup pass: standardize step formatting across every existing record,
-  // regardless of whether it was typed manually (e.g. "1. Do X") or came from elsewhere.
-  let changed = false;
-  library.forEach(l => {
-    if (l.instructions && l.instructions.length > 0) {
-      const cleaned = normalizeStepList(l.instructions);
-      if (JSON.stringify(cleaned) !== JSON.stringify(l.instructions)) {
-        l.instructions = cleaned;
-        changed = true;
-      }
-    }
-  });
-  if (changed) await saveLibrary();
+  return {
+    id: r.id,
+    timestamp: r.created_at,
+    error_text: r.error_text,
+    screen_name: r.screen_name,
+    ifs_version_hint: r.ifs_version_hint,
+    activity: r.activity || null,
+    catalog_match,
+    lib_match: r.solution_id || null
+  };
 }
 
+// Company-private archive — RLS scopes every row to the caller's company.
 async function loadArchive() {
-  try {
-    const v = await storageGet(ARCHIVE_KEY);
-    archive = v ? JSON.parse(v) : [];
-  } catch { archive = []; }
+  const { data, error } = await sb.from('archive_entries').select('*').order('created_at', { ascending: false });
+  if (error) { console.error('loadArchive', error); archive = []; }
+  else archive = (data || []).map(mapArchiveRow);
   updateArchiveBadge();
 }
 
-async function saveLibrary() {
-  await storageSet(LIBRARY_KEY, JSON.stringify(library));
-}
-
-async function saveArchive() {
-  await storageSet(ARCHIVE_KEY, JSON.stringify(archive));
-  updateArchiveBadge();
-}
+// Deprecated: archive writes now go straight to Supabase. Kept as a no-op.
+async function saveArchive() { updateArchiveBadge(); }
 
 function updateArchiveBadge() {
   document.getElementById('archiveBadge').textContent = archive.length;
@@ -819,7 +700,7 @@ function renderVersionSettingCard() {
       </div>
     </div>`;
   }
-  const mismatch = ifsVersionSetting !== 'IFS 10';
+  const mismatch = ifsVersionSetting && ifsVersionSetting !== 'IFS10';
   return `
     <div style="display:flex;align-items:center;gap:8px;font-size:11px;color:var(--text-3);margin-bottom:14px">
       🏷️ IFS version: <b style="color:var(--text-2)">${escHtml(ifsVersionSetting)}</b>
@@ -1046,29 +927,30 @@ Which candidate best matches the extracted error?`
     if (libMatch) {
       const idx = library.findIndex(l => l.id === libMatch.id);
       if (idx !== -1) {
-        library[idx].times_served = (library[idx].times_served || 0) + 1;
-        await saveLibrary();
+        library[idx].times_served = (library[idx].times_served || 0) + 1;   // optimistic
+        sb.rpc('record_solution_served', { p_solution_id: libMatch.id });   // fire-and-forget
       }
     }
 
-    // Archive the submission
-    const entry = {
-      id: 'a' + Date.now(),
-      timestamp: new Date().toISOString(),
-      error_text: extracted.error_text,
-      screen_name: extracted.screen_name || null,
-      ifs_version_hint: extracted.ifs_version_hint || null,
-      activity: activityContext || null,
-      catalog_match: confirmedMatch ? {
-        error_code: confirmedMatch.row.ERROR_CODE,
-        component: confirmedMatch.row.COMPONENT_NAME,
-        package: confirmedMatch.row.PACKAGE_NAME,
-        confidence: confirmedMatch.confidence
-      } : null,
-      lib_match: libMatch ? libMatch.id : null
-    };
-    archive.unshift(entry);
-    await saveArchive();
+    // Archive the submission into the company-private archive_entries table.
+    // (Skipped for a platform_admin, who has no company context.)
+    if (profile && profile.company_id) {
+      try {
+        const { data: arcRow, error: arcErr } = await sb.from('archive_entries').insert({
+          company_id: profile.company_id,
+          submitted_by_user_id: authUser.id,
+          error_text: extracted.error_text,
+          screen_name: extracted.screen_name || null,
+          ifs_version_hint: extracted.ifs_version_hint || null,
+          catalog_match_error_code: confirmedMatch ? confirmedMatch.row.ERROR_CODE : null,
+          match_confidence: confirmedMatch ? confirmedMatch.confidence : null,
+          activity: activityContext || null,
+          solution_id: libMatch ? libMatch.id : null
+        }).select().maybeSingle();
+        if (arcErr) console.error('archive insert', arcErr);
+        else if (arcRow) { archive.unshift(mapArchiveRow(arcRow)); updateArchiveBadge(); }
+      } catch (e) { console.error('archive insert', e); }
+    }
 
     renderResult(extracted, confirmedMatch, libMatch, debugInfo);
 
@@ -1290,21 +1172,16 @@ async function recordFeedback(libMatchId, accepted, btn) {
     ? '<span style="font-size:12px;color:var(--success)">✓ Great, glad it helped!</span>'
     : '<span style="font-size:12px;color:var(--warning)">Thanks — we\'ll improve this solution.</span>';
   if (!libMatchId) return;
+  // Counters + PUBLISHED->VERIFIED / ->NEEDS_REVIEW transitions are all done
+  // server-side by the RPC (a client cannot set an arbitrary status this way).
+  const { error } = await sb.rpc('record_solution_feedback', { p_solution_id: libMatchId, p_accepted: accepted });
+  if (error) { console.error('recordFeedback', error); return; }
+  // Refresh the local copy of just this solution so counts/status stay in sync.
   const idx = library.findIndex(l => l.id === libMatchId);
-  if (idx === -1) return;
-  if (accepted) {
-    library[idx].times_accepted = (library[idx].times_accepted || 0) + 1;
-    if (library[idx].status === 'PUBLISHED') library[idx].status = 'VERIFIED';
-    library[idx].last_verified = new Date().toISOString();
-  } else {
-    library[idx].times_rejected = (library[idx].times_rejected || 0) + 1;
-    const rate = library[idx].times_accepted / library[idx].times_served;
-    if (library[idx].times_served >= 3 && rate < 0.3 &&
-        (library[idx].status === 'PUBLISHED' || library[idx].status === 'VERIFIED')) {
-      library[idx].status = 'NEEDS_REVIEW';
-    }
+  if (idx !== -1) {
+    const { data } = await sb.from('solutions').select('*').eq('id', libMatchId).maybeSingle();
+    if (data) library[idx] = mapSolutionRow(data);
   }
-  await saveLibrary();
 }
 
 // ── TIER 2 — ASSEMBLED ANSWER ──────────────────────────────────
@@ -1370,31 +1247,27 @@ Research and assemble a step-by-step fix for this error.`
     const normalizedSteps = normalizeStepList(parsed.steps);
     if (normalizedSteps.length === 0) throw new Error('No steps were generated.');
 
-    // Reuse an existing draft for this error code if one already exists, otherwise create one
-    let idx = library.findIndex(l => l.error_code === catalogRow.ERROR_CODE);
-    const record = {
-      id: idx !== -1 ? library[idx].id : 'l' + Date.now(),
-      error_code: catalogRow.ERROR_CODE,
-      lu_name: catalogRow.LU_NAME || '',
-      package_name: catalogRow.PACKAGE_NAME || '',
-      component_code: catalogRow.COMPONENT_CODE || '',
-      component_name: catalogRow.COMPONENT_NAME || '',
-      error_template: catalogRow.ERROR_TEXT || '',
-      ifs_version: catalogRow.IFS_VERSION || 'IFS10',
-      title: parsed.title || `Fix for ${catalogRow.ERROR_CODE}`,
-      who_acts: parsed.who_acts || '',
-      source: 'AI',
-      status: 'PENDING_REVIEW',
-      reject_note: '',
-      times_served: idx !== -1 ? (library[idx].times_served || 0) : 0,
-      times_accepted: idx !== -1 ? (library[idx].times_accepted || 0) : 0,
-      times_rejected: idx !== -1 ? (library[idx].times_rejected || 0) : 0,
-      added_date: new Date().toISOString(),
-      instructions: normalizedSteps,
-      assembled_sources: parsed.sources || []
-    };
-    if (idx !== -1) library[idx] = record; else library.push(record);
-    await saveLibrary();
+    // Save as a new AI-assembled draft pending admin review, owned by this user.
+    // Under the shared model we always insert a fresh pending row rather than
+    // editing a shared seed the user doesn't own.
+    try {
+      await insertSolution({
+        error_code: catalogRow.ERROR_CODE,
+        lu_name: catalogRow.LU_NAME || null,
+        package_name: catalogRow.PACKAGE_NAME || null,
+        component_code: catalogRow.COMPONENT_CODE || null,
+        component_name: catalogRow.COMPONENT_NAME || null,
+        error_template: catalogRow.ERROR_TEXT || null,
+        ifs_version: catalogRow.IFS_VERSION || 'IFS10',
+        title: parsed.title || `Fix for ${catalogRow.ERROR_CODE}`,
+        who_acts: parsed.who_acts || null,
+        source: 'AI',
+        status: 'PENDING_REVIEW',
+        instructions: normalizedSteps,
+        assembled_sources: parsed.sources || []
+      });
+      await loadLibrary();
+    } catch (e) { console.error('assemble save', e); }
 
     targetEl.innerHTML = `
       <div style="background:var(--surface-2);border:1px solid var(--accent-dim);border-radius:8px;padding:12px">
@@ -1461,8 +1334,8 @@ function renderArchive() {
             ${e.screenshot ? `<img src="${e.screenshot}" style="max-width:100%;max-height:200px;border-radius:6px;border:1px solid var(--border);margin:6px 0">` : ''}
             <div class="archive-meta">
               ${e.catalog_match
-                ? `<span class="archive-tag matched">✓ ${escHtml(e.catalog_match.error_code)} · ${escHtml(e.catalog_match.component)}</span>
-                   <span class="archive-tag">${escHtml(e.catalog_match.confidence)} confidence</span>`
+                ? `<span class="archive-tag matched">✓ ${escHtml(e.catalog_match.error_code)}${e.catalog_match.component ? ' · ' + escHtml(e.catalog_match.component) : ''}</span>
+                   ${e.catalog_match.confidence ? `<span class="archive-tag">${escHtml(e.catalog_match.confidence)} confidence</span>` : ''}`
                 : `<span class="archive-tag unmatched">✗ No catalog match</span>`}
               ${e.lib_match ? `<span class="archive-tag matched">✓ Solution in library</span>` : ''}
             </div>
@@ -1470,7 +1343,11 @@ function renderArchive() {
       }).join('')}
     </div>`;
   document.getElementById('clearArchiveBtn').addEventListener('click', async () => {
-    archive = []; await saveArchive(); renderArchive();
+    if (!confirm('Delete all archived errors for your company? This cannot be undone.')) return;
+    const { error } = await sb.from('archive_entries').delete().eq('company_id', profile.company_id);
+    if (error) { alert(error.message); return; }
+    await loadArchive();
+    renderArchive();
   });
 }
 
@@ -1525,39 +1402,33 @@ function renderLibrary() {
     const editId = document.getElementById('newErrorCode').dataset.editId;
     if (!title || steps.length === 0) return;
 
-    if (editId) {
-      const idx = library.findIndex(l => l.id === editId);
-      if (idx !== -1) {
-        library[idx].instructions = steps;
-        library[idx].who_acts = who;
-        library[idx].title = title;
-        library[idx].source = source;
-        library[idx].status = 'DRAFT';
-        library[idx].reject_note = '';
-        library[idx].added_date = new Date().toISOString();
+    try {
+      const existing = editId ? library.find(l => l.id === editId) : null;
+      const ownedEditable = existing && existing.contributed_by_user_id === authUser.id
+        && ['DRAFT', 'REJECTED', 'NO_INSTRUCTION'].includes(existing.status);
+      if (ownedEditable) {
+        const { error } = await sb.from('solutions').update({
+          instructions: steps, who_acts: who, title, source, status: 'DRAFT', reject_note: ''
+        }).eq('id', editId);
+        if (error) throw error;
+      } else {
+        // New solution, or "add steps" to a shared/seed row the user can't edit:
+        // create a fresh owned draft, carrying catalog metadata where available.
+        const meta = existing ? null : catalog.find(r => r.ERROR_CODE === code) || {};
+        await insertSolution({
+          error_code: (existing ? existing.error_code : code) || '—',
+          lu_name: existing ? existing.lu_name : (meta.LU_NAME || null),
+          package_name: existing ? existing.package_name : (meta.PACKAGE_NAME || null),
+          component_code: existing ? existing.component_code : (meta.COMPONENT_CODE || null),
+          component_name: comp || (existing ? existing.component_name : (meta.COMPONENT_NAME || null)),
+          error_template: existing ? existing.error_template : (meta.ERROR_TEXT || null),
+          ifs_version: (existing ? existing.ifs_version : meta.IFS_VERSION) || 'IFS10',
+          title, who_acts: who, source, status: 'DRAFT', instructions: steps
+        });
       }
       delete document.getElementById('newErrorCode').dataset.editId;
-    } else {
-      const catalogEntry = catalog.find(r => r.ERROR_CODE === code);
-      library.push({
-        id: 'l' + Date.now(),
-        error_code: code || '—',
-        lu_name: catalogEntry?.LU_NAME || '',
-        package_name: catalogEntry?.PACKAGE_NAME || '',
-        component_code: catalogEntry?.COMPONENT_CODE || '',
-        component_name: comp || catalogEntry?.COMPONENT_NAME || '',
-        error_template: catalogEntry?.ERROR_TEXT || '',
-        ifs_version: catalogEntry?.IFS_VERSION || 'IFS10',
-        title, who_acts: who,
-        source,
-        status: 'DRAFT',
-        reject_note: '',
-        times_served: 0, times_accepted: 0, times_rejected: 0,
-        added_date: new Date().toISOString(),
-        instructions: steps
-      });
-    }
-    await saveLibrary();
+      await loadLibrary();
+    } catch (e) { alert('Could not save: ' + (e.message || e)); return; }
     document.getElementById('addForm').style.display = 'none';
     renderLibList();
   });
@@ -1631,6 +1502,8 @@ function renderLibList() {
     const src = sourceLabels[l.source] || sourceLabels['ADMIN'];
     const acceptRate = l.times_served > 0 ? Math.round((l.times_accepted / l.times_served) * 100) + '%' : '—';
     const hasSteps = l.instructions && l.instructions.length > 0;
+    const isOwner = l.contributed_by_user_id && l.contributed_by_user_id === authUser.id;
+    const canModerate = isPlatformAdmin;   // review queue is platform_admin-only
     return `
     <div class="lib-item">
       <div style="flex:1">
@@ -1653,45 +1526,46 @@ function renderLibList() {
       <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
         ${!hasSteps ? `<button class="btn btn-primary" style="font-size:11px;padding:4px 8px" data-assemble-lib="${l.id}">🪄 Assemble</button>` : ''}
         ${!hasSteps ? `<button class="btn btn-ghost" style="font-size:11px;padding:4px 8px" data-add="${l.id}">+ Add steps manually</button>` : ''}
-        ${hasSteps && (l.status === 'DRAFT' || l.status === 'REJECTED') ? `<button class="btn btn-primary" style="font-size:11px;padding:4px 8px" data-submit="${l.id}">Submit for review</button>` : ''}
-        ${l.status === 'PENDING_REVIEW' ? `
+        ${hasSteps && (l.status === 'DRAFT' || l.status === 'REJECTED') && (isOwner || canModerate) ? `<button class="btn btn-primary" style="font-size:11px;padding:4px 8px" data-submit="${l.id}">Submit for review</button>` : ''}
+        ${canModerate && l.status === 'PENDING_REVIEW' ? `
           <button class="btn btn-primary" style="font-size:11px;padding:4px 8px;background:var(--success)" data-approve="${l.id}">✓ Approve</button>
           <button class="btn-danger" style="font-size:11px;padding:4px 8px" data-reject="${l.id}">✗ Reject</button>
         ` : ''}
-        ${l.status === 'PUBLISHED' || l.status === 'VERIFIED' ? `<button class="btn btn-ghost" style="font-size:11px;padding:4px 8px" data-unpublish="${l.id}">Unpublish</button>` : ''}
-        ${hasSteps ? `<button class="btn btn-ghost" style="font-size:11px;padding:4px 8px" data-add="${l.id}">✏️ Edit</button>` : ''}
-        <button class="btn-danger" data-del="${l.id}">🗑</button>
+        ${canModerate && (l.status === 'PUBLISHED' || l.status === 'VERIFIED') ? `<button class="btn btn-ghost" style="font-size:11px;padding:4px 8px" data-unpublish="${l.id}">Unpublish</button>` : ''}
+        ${hasSteps && (isOwner || canModerate) ? `<button class="btn btn-ghost" style="font-size:11px;padding:4px 8px" data-add="${l.id}">✏️ Edit</button>` : ''}
+        ${canModerate || (isOwner && (l.status === 'DRAFT' || l.status === 'REJECTED')) ? `<button class="btn-danger" data-del="${l.id}">🗑</button>` : ''}
       </div>
     </div>`; 
   }).join('');
 
+  // After any write, refresh from the server (source of truth) and re-render.
+  async function afterLibWrite(error) {
+    if (error) { alert(error.message || String(error)); return; }
+    await loadLibrary();
+    renderLibList();
+  }
+
   el.querySelectorAll('[data-del]').forEach(btn => {
     btn.addEventListener('click', async () => {
-      library = library.filter(l => l.id !== btn.dataset.del);
-      await saveLibrary();
-      renderLibList();
+      const { error } = await sb.from('solutions').delete().eq('id', btn.dataset.del);
+      await afterLibWrite(error);
     });
   });
 
   el.querySelectorAll('[data-submit]').forEach(btn => {
     btn.addEventListener('click', async () => {
-      const idx = library.findIndex(l => l.id === btn.dataset.submit);
-      if (idx === -1) return;
-      library[idx].status = 'PENDING_REVIEW';
-      await saveLibrary();
-      renderLibList();
+      // DRAFT/REJECTED -> PENDING_REVIEW; allowed by the owner's RLS policy.
+      const { error } = await sb.from('solutions')
+        .update({ status: 'PENDING_REVIEW' }).eq('id', btn.dataset.submit);
+      await afterLibWrite(error);
     });
   });
 
   el.querySelectorAll('[data-approve]').forEach(btn => {
     btn.addEventListener('click', async () => {
-      const idx = library.findIndex(l => l.id === btn.dataset.approve);
-      if (idx === -1) return;
-      library[idx].status = 'PUBLISHED';
-      library[idx].reject_note = '';
-      library[idx].published_date = new Date().toISOString();
-      await saveLibrary();
-      renderLibList();
+      const { error } = await sb.rpc('moderate_solution',
+        { p_solution_id: btn.dataset.approve, p_action: 'approve' });
+      await afterLibWrite(error);
     });
   });
 
@@ -1699,22 +1573,17 @@ function renderLibList() {
     btn.addEventListener('click', async () => {
       const reason = prompt('Reason for rejecting this solution:');
       if (reason === null) return;
-      const idx = library.findIndex(l => l.id === btn.dataset.reject);
-      if (idx === -1) return;
-      library[idx].status = 'REJECTED';
-      library[idx].reject_note = reason.trim();
-      await saveLibrary();
-      renderLibList();
+      const { error } = await sb.rpc('moderate_solution',
+        { p_solution_id: btn.dataset.reject, p_action: 'reject', p_reject_note: reason.trim() });
+      await afterLibWrite(error);
     });
   });
 
   el.querySelectorAll('[data-unpublish]').forEach(btn => {
     btn.addEventListener('click', async () => {
-      const idx = library.findIndex(l => l.id === btn.dataset.unpublish);
-      if (idx === -1) return;
-      library[idx].status = 'DRAFT';
-      await saveLibrary();
-      renderLibList();
+      const { error } = await sb.rpc('moderate_solution',
+        { p_solution_id: btn.dataset.unpublish, p_action: 'unpublish' });
+      await afterLibWrite(error);
     });
   });
 
@@ -2251,9 +2120,206 @@ function normalizeStepList(steps) {
   return (steps || []).map(normalizeStep).filter(Boolean);
 }
 
+// ══════════════════════════════════════════════════════════════
+// PHASE 2 — Accounts, companies, roles (Supabase)
+// ══════════════════════════════════════════════════════════════
+const SUPABASE_URL = 'https://mbzepypmypukwdftvuhb.supabase.co';
+const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_GSfyIsAs1b1W11VYbBMvRg__KaVyltb';
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+
+let authUser = null;         // supabase auth user (session.user)
+let profile = null;          // public.users row: { id, email, company_id, role }
+let company = null;          // companies row
+let isPlatformAdmin = false;
+let appDataLoaded = false;   // heavy catalog/library load happens once per session
+
+const IFS_VERSION_DB_OPTIONS = ['IFS10', 'IFS Cloud', 'IFS Apps 9', 'Not sure'];
+
+async function loadProfile() {
+  const { data, error } = await sb.from('users').select('*').eq('id', authUser.id).maybeSingle();
+  if (error) { console.error('loadProfile', error); return null; }
+  return data;
+}
+async function loadCompany() {
+  if (!profile || !profile.company_id) return null;
+  const { data } = await sb.from('companies').select('*').eq('id', profile.company_id).maybeSingle();
+  return data || null;
+}
+
+// ── Login / signup screen ──────────────────────────────────────
+let authMode = 'login';   // 'login' | 'signup'
+
+function renderAuthScreen(msg) {
+  document.body.classList.remove('app-ready');
+  const gate = document.getElementById('authGate');
+  gate.style.display = 'flex';
+  const isSignup = authMode === 'signup';
+  gate.innerHTML = `
+    <div class="auth-card">
+      <div class="auth-logo">IFS</div>
+      <div class="auth-title">${isSignup ? 'Create your account' : 'Sign in'}</div>
+      <div class="auth-sub">IFS Error Assistant</div>
+      <div class="auth-field">
+        <label>Work email</label>
+        <input id="authEmail" type="email" autocomplete="email" placeholder="you@company.com">
+      </div>
+      <div class="auth-field">
+        <label>Password</label>
+        <input id="authPassword" type="password"
+          autocomplete="${isSignup ? 'new-password' : 'current-password'}" placeholder="••••••••">
+      </div>
+      <button class="auth-btn" id="authSubmit">${isSignup ? 'Sign up' : 'Sign in'}</button>
+      <div id="authMsg"></div>
+      <div class="auth-toggle">
+        ${isSignup
+          ? `Already have an account? <a id="authSwitch">Sign in</a>`
+          : `New here? <a id="authSwitch">Create an account</a>`}
+      </div>
+    </div>`;
+  if (msg) showAuthMsg(msg.text, msg.type);
+  document.getElementById('authSubmit').onclick = isSignup ? handleSignup : handleLogin;
+  document.getElementById('authSwitch').onclick = () => {
+    authMode = isSignup ? 'login' : 'signup'; renderAuthScreen();
+  };
+  ['authEmail', 'authPassword'].forEach(id =>
+    document.getElementById(id).addEventListener('keydown',
+      e => { if (e.key === 'Enter') document.getElementById('authSubmit').click(); }));
+}
+
+function showAuthMsg(text, type = 'err') {
+  const m = document.getElementById('authMsg');
+  if (m) m.innerHTML = `<div class="auth-msg ${type}">${escHtml(text)}</div>`;
+}
+
+async function handleLogin() {
+  const email = document.getElementById('authEmail').value.trim();
+  const password = document.getElementById('authPassword').value;
+  if (!email || !password) return showAuthMsg('Enter your email and password.');
+  const btn = document.getElementById('authSubmit'); btn.disabled = true; btn.textContent = 'Signing in…';
+  const { error } = await sb.auth.signInWithPassword({ email, password });
+  if (error) { btn.disabled = false; btn.textContent = 'Sign in'; return showAuthMsg(error.message); }
+  // onAuthStateChange -> boot()
+}
+
+async function handleSignup() {
+  const email = document.getElementById('authEmail').value.trim();
+  const password = document.getElementById('authPassword').value;
+  if (!email || !password) return showAuthMsg('Enter your email and password.');
+  if (password.length < 8) return showAuthMsg('Password must be at least 8 characters.');
+  const btn = document.getElementById('authSubmit'); btn.disabled = true; btn.textContent = 'Creating…';
+  const { data, error } = await sb.auth.signUp({ email, password });
+  if (error) { btn.disabled = false; btn.textContent = 'Sign up'; return showAuthMsg(error.message); }
+  if (!data.session) {
+    // Email-confirmation is ON — no session yet
+    btn.disabled = false; btn.textContent = 'Sign up';
+    return showAuthMsg('Check your email to confirm your account, then sign in.', 'ok');
+  }
+  // Confirmation OFF — session live, onAuthStateChange -> boot() -> onboarding
+}
+
+// ── Onboarding (authenticated but no company yet) ──────────────
+function renderOnboarding(msg) {
+  document.body.classList.remove('app-ready');
+  const gate = document.getElementById('authGate');
+  gate.style.display = 'flex';
+  gate.innerHTML = `
+    <div class="auth-card">
+      <div class="auth-logo">IFS</div>
+      <div class="auth-title">Set up your company</div>
+      <div class="auth-sub">Signed in as ${escHtml(authUser.email)}</div>
+      <div class="auth-field">
+        <label>Company name</label>
+        <input id="obCompany" placeholder="e.g. Acme Manufacturing">
+      </div>
+      <div class="auth-field">
+        <label>IFS version</label>
+        <select id="obVersion">
+          ${IFS_VERSION_DB_OPTIONS.map(v => `<option value="${v}">${v}</option>`).join('')}
+        </select>
+      </div>
+      <button class="auth-btn" id="obCreate">Create company</button>
+      <div id="authMsg"></div>
+      <div class="auth-toggle">Were you invited to an existing company? <a id="obInvite">Accept invite</a></div>
+      <div class="auth-toggle"><a id="obSignout">Sign out</a></div>
+    </div>`;
+  if (msg) showAuthMsg(msg.text, msg.type);
+  document.getElementById('obCreate').onclick = handleCreateCompany;
+  document.getElementById('obInvite').onclick = handleAcceptInvite;
+  document.getElementById('obSignout').onclick = () => sb.auth.signOut();
+}
+
+async function handleCreateCompany() {
+  const name = document.getElementById('obCompany').value.trim();
+  const version = document.getElementById('obVersion').value;
+  if (!name) return showAuthMsg('Enter a company name.');
+  const btn = document.getElementById('obCreate'); btn.disabled = true; btn.textContent = 'Creating…';
+  const { error } = await sb.rpc('create_company_and_join', { p_company_name: name, p_ifs_version: version });
+  if (error) { btn.disabled = false; btn.textContent = 'Create company'; return showAuthMsg(error.message); }
+  profile = null; company = null;   // force reload
+  boot();
+}
+
+async function handleAcceptInvite() {
+  const { error } = await sb.rpc('accept_company_invite');
+  if (error) return showAuthMsg(error.message);
+  profile = null; company = null;
+  boot();
+}
+
+// ── User bar (header, when logged in) ──────────────────────────
+function renderUserBar() {
+  let bar = document.getElementById('authUserBar');
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'authUserBar';
+    bar.className = 'auth-userbar';
+    document.querySelector('.header').appendChild(bar);
+  }
+  const roleLabel = isPlatformAdmin ? 'Platform admin'
+    : profile && profile.role === 'company_admin' ? 'Company admin' : 'Member';
+  bar.innerHTML = `
+    <span>${escHtml(company ? company.name : 'Platform')} · ${escHtml(authUser.email)} · ${roleLabel}</span>
+    <button id="authSignout">Sign out</button>`;
+  document.getElementById('authSignout').onclick = () => sb.auth.signOut();
+}
+
+// ── Gated boot ─────────────────────────────────────────────────
+let booting = false;
+async function boot() {
+  if (booting) return;
+  booting = true;
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session) {
+      authUser = null; profile = null; company = null; isPlatformAdmin = false; appDataLoaded = false;
+      renderAuthScreen();
+      return;
+    }
+    authUser = session.user;
+    if (!profile) profile = await loadProfile();
+    if (!profile) { renderOnboarding(); return; }
+    isPlatformAdmin = profile.role === 'platform_admin';
+    if (!company) company = await loadCompany();
+    if (!company && !isPlatformAdmin) { renderOnboarding(); return; }
+
+    // Authenticated + provisioned → reveal the app
+    document.getElementById('authGate').style.display = 'none';
+    document.body.classList.add('app-ready');
+    renderUserBar();
+    if (!appDataLoaded) {
+      await Promise.all([loadCatalog(), loadLibrary(), loadArchive(), loadIfsVersionSetting()]);
+      appDataLoaded = true;
+      renderTroubleshoot();
+    }
+  } finally {
+    booting = false;
+  }
+}
+
+sb.auth.onAuthStateChange(() => boot());
+
 // ── Init ─────────────────────────────────────────────────────
-Promise.all([loadCatalog(), loadLibrary(), loadArchive(), loadIfsVersionSetting()])
-  .then(renderTroubleshoot);
+boot();
 </script>
 </body>
 </html>
