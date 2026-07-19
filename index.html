@@ -440,6 +440,22 @@
     background: var(--surface-2); border: 1px solid var(--border);
     color: var(--text-2); border-radius: 6px; padding: 4px 10px; cursor: pointer; font-size: 12px;
   }
+  .plan-badge {
+    font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px;
+    background: var(--accent-dim); color: var(--accent);
+  }
+  /* ── Plan / upgrade cards ── */
+  .plan-grid { display: flex; gap: 12px; flex-wrap: wrap; }
+  .plan-card {
+    flex: 1; min-width: 180px; background: var(--surface-2);
+    border: 1px solid var(--border); border-radius: var(--radius); padding: 18px;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .plan-name { font-size: 13px; font-weight: 600; color: var(--text-2); text-transform: uppercase; letter-spacing: .04em; }
+  .plan-price { font-size: 28px; font-weight: 700; color: var(--text); }
+  .plan-price span { font-size: 13px; font-weight: 500; color: var(--text-3); }
+  .plan-desc { font-size: 12px; color: var(--text-3); flex: 1; }
+  .plan-card .btn { margin-top: 6px; }
 </style>
 
 <div id="authGate" class="auth-gate" style="display:none"></div>
@@ -724,6 +740,8 @@ function wireVersionSettingCard(el) {
 
 function renderTroubleshoot() {
   const el = document.getElementById('tab-troubleshoot');
+  // Resolutions are the paid feature. No plan (and not a platform admin) → show plans.
+  if (!isPlatformAdmin && !canResolve()) { renderUpgrade(el); return; }
   el.innerHTML = `
     ${renderVersionSettingCard()}
     <div class="card">
@@ -794,12 +812,16 @@ function renderTroubleshoot() {
 }
 
 async function analyzeError() {
+  // Defense-in-depth: the UI hides this for unpaid users and the proxy enforces
+  // it server-side, but guard here too.
+  if (!isPlatformAdmin && !canResolve()) { renderTroubleshoot(); return; }
   const btn = document.getElementById('analyzeBtn');
   const resultArea = document.getElementById('resultArea');
   btn.disabled = true;
   btn.innerHTML = '<span class="spin"></span> Step 1: Reading error text...';
   resultArea.innerHTML = '';
   activityContext = document.getElementById('activityInput')?.value?.trim() || '';
+  currentResolutionRef = crypto.randomUUID();   // one billable resolution per analysis
 
   try {
     // STEP 1: Extract error text from screenshot (vision only, no catalog)
@@ -1171,6 +1193,9 @@ async function recordFeedback(libMatchId, accepted, btn) {
   btn.parentElement.innerHTML = accepted
     ? '<span style="font-size:12px;color:var(--success)">✓ Great, glad it helped!</span>'
     : '<span style="font-size:12px;color:var(--warning)">Thanks — we\'ll improve this solution.</span>';
+  // A resolution marked helpful is the billable event for pay-as-you-go
+  // (no-op for subscribers and platform admins; charged once per resolution).
+  if (accepted && !isPlatformAdmin) chargeResolution(currentResolutionRef);
   if (!libMatchId) return;
   // Counters + PUBLISHED->VERIFIED / ->NEEDS_REVIEW transitions are all done
   // server-side by the RPC (a client cannot set an arbitrary status this way).
@@ -2155,6 +2180,108 @@ async function authedHeaders() {
   return { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token };
 }
 
+// ── Billing ────────────────────────────────────────────────────
+const BILLING_BASE = 'https://ifs-error-assistant-proxy.vercel.app/api/billing';
+let hasActiveSub = false;
+let paygReady = false;
+let currentResolutionRef = null;   // unique per troubleshoot analysis, for PAYG charging
+
+const ACTIVE_STATUSES = ['active', 'trialing'];
+function computeAccess() {
+  const personalActive = profile && ACTIVE_STATUSES.includes(profile.subscription_status);
+  const companyActive  = company && ACTIVE_STATUSES.includes(company.subscription_status);
+  hasActiveSub = !!(personalActive || companyActive);
+  paygReady = !!(profile && profile.payg_ready);
+}
+function canResolve() { return hasActiveSub || paygReady; }
+function planLabel() {
+  if (company && ACTIVE_STATUSES.includes(company.subscription_status)) return 'Company plan';
+  if (profile && ACTIVE_STATUSES.includes(profile.subscription_status)) return 'Personal plan';
+  if (paygReady) return 'Pay-as-you-go';
+  return 'No plan';
+}
+
+async function billingRedirect(path, body, btn) {
+  const original = btn ? btn.textContent : null;
+  if (btn) { btn.disabled = true; btn.textContent = 'Redirecting…'; }
+  try {
+    const resp = await fetch(`${BILLING_BASE}/${path}`, {
+      method: 'POST', headers: await authedHeaders(), body: JSON.stringify(body || {})
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok || !data.url) throw new Error((data.error && data.error.message) || 'Request failed');
+    window.location = data.url;
+  } catch (e) {
+    alert(e.message);
+    if (btn) { btn.disabled = false; btn.textContent = original; }
+  }
+}
+const startCheckout   = (tier, btn) => billingRedirect('checkout', { tier }, btn);
+const startPaygSetup  = (btn) => billingRedirect('setup-payg', {}, btn);
+const openBillingPortal = (btn) => billingRedirect('portal', {}, btn);
+
+// Charge a PAYG user $15 when a resolution is marked helpful. Subscribers are
+// covered (checked here and server-side); the server keys on resolution_ref so a
+// repeat click never double-charges.
+async function chargeResolution(resolutionRef) {
+  if (hasActiveSub || !resolutionRef) return;
+  try {
+    await fetch(`${BILLING_BASE}/charge-resolution`, {
+      method: 'POST', headers: await authedHeaders(), body: JSON.stringify({ resolution_ref: resolutionRef })
+    });
+  } catch (e) { console.error('charge-resolution', e); }
+}
+
+// Shown in the Troubleshoot tab when the user has no way to pay yet.
+function renderUpgrade(targetEl) {
+  const canCompany = profile && profile.role === 'company_admin';
+  targetEl.innerHTML = `
+    <div class="card">
+      <div class="card-title">Choose how to resolve errors</div>
+      <div style="font-size:13px;color:var(--text-2);margin-bottom:16px">Browsing and searching the library stays free. To analyze a screenshot and get a step-by-step fix, pick a plan:</div>
+      <div class="plan-grid">
+        <div class="plan-card">
+          <div class="plan-name">Personal</div>
+          <div class="plan-price">$49<span>/mo</span></div>
+          <div class="plan-desc">Unlimited resolutions for you.</div>
+          <button class="btn btn-primary" id="planPersonal">Subscribe</button>
+        </div>
+        ${canCompany ? `
+        <div class="plan-card">
+          <div class="plan-name">Company</div>
+          <div class="plan-price">$299<span>/mo</span></div>
+          <div class="plan-desc">Covers everyone at ${escHtml(company ? company.name : 'your company')}.</div>
+          <button class="btn btn-primary" id="planCompany">Subscribe</button>
+        </div>` : ''}
+        <div class="plan-card">
+          <div class="plan-name">Pay as you go</div>
+          <div class="plan-price">$15<span>/fix</span></div>
+          <div class="plan-desc">Charged only when a fix is marked helpful.</div>
+          <button class="btn btn-ghost" id="planPayg">Add a card</button>
+        </div>
+      </div>
+    </div>`;
+  const p = document.getElementById('planPersonal'); if (p) p.onclick = () => startCheckout('personal', p);
+  const c = document.getElementById('planCompany');  if (c) c.onclick = () => startCheckout('company', c);
+  const g = document.getElementById('planPayg');     if (g) g.onclick = () => startPaygSetup(g);
+}
+
+// After returning from Stripe Checkout/Portal, refresh billing state.
+async function handleBillingReturn() {
+  const params = new URLSearchParams(location.search);
+  const b = params.get('billing');
+  if (!b) return;
+  history.replaceState({}, '', location.pathname);   // clean the URL
+  if (b === 'cancelled') return;
+  await new Promise(r => setTimeout(r, 1800));        // let the webhook land
+  profile = await loadProfile();
+  company = await loadCompany();
+  computeAccess();
+  renderUserBar();
+  renderTroubleshoot();
+  alert(b === 'payg_ready' ? 'Card saved — you can now resolve errors.' : 'You\'re all set — thanks!');
+}
+
 // ── Login / signup screen ──────────────────────────────────────
 let authMode = 'login';   // 'login' | 'signup'
 
@@ -2286,10 +2413,19 @@ function renderUserBar() {
   }
   const roleLabel = isPlatformAdmin ? 'Platform admin'
     : profile && profile.role === 'company_admin' ? 'Company admin' : 'Member';
+  const showBilling = !isPlatformAdmin;
+  const hasCustomer = (profile && profile.stripe_customer_id) || (company && company.stripe_customer_id);
   bar.innerHTML = `
     <span>${escHtml(company ? company.name : 'Platform')} · ${escHtml(authUser.email)} · ${roleLabel}</span>
+    ${showBilling ? `<span class="plan-badge">${escHtml(planLabel())}</span>
+      <button id="billingBtn">${hasCustomer ? 'Manage billing' : 'Upgrade'}</button>` : ''}
     <button id="authSignout">Sign out</button>`;
   document.getElementById('authSignout').onclick = () => sb.auth.signOut();
+  const bb = document.getElementById('billingBtn');
+  if (bb) bb.onclick = () => {
+    if (hasCustomer) openBillingPortal(bb);
+    else document.querySelector('[data-tab="troubleshoot"]').click();  // troubleshoot shows the plans
+  };
 }
 
 // ── Gated boot ─────────────────────────────────────────────────
@@ -2310,6 +2446,7 @@ async function boot() {
     isPlatformAdmin = profile.role === 'platform_admin';
     if (!company) company = await loadCompany();
     if (!company && !isPlatformAdmin) { renderOnboarding(); return; }
+    computeAccess();
 
     // Authenticated + provisioned → reveal the app
     document.getElementById('authGate').style.display = 'none';
@@ -2319,6 +2456,7 @@ async function boot() {
       await Promise.all([loadCatalog(), loadLibrary(), loadArchive(), loadIfsVersionSetting()]);
       appDataLoaded = true;
       renderTroubleshoot();
+      handleBillingReturn();
     }
   } finally {
     booting = false;
