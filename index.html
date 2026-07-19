@@ -805,7 +805,7 @@ async function analyzeError() {
     // STEP 1: Extract error text from screenshot (vision only, no catalog)
     const extractResp = await fetch('https://ifs-error-assistant-proxy.vercel.app/api/messages', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await authedHeaders(),
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
         max_tokens: 1000,
@@ -879,7 +879,7 @@ Respond ONLY with raw JSON (no markdown):
     if (catalogMatches.length > 0) {
       const confirmResp = await fetch('https://ifs-error-assistant-proxy.vercel.app/api/messages', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await authedHeaders(),
         body: JSON.stringify({
           model: 'claude-sonnet-4-6',
           max_tokens: 500,
@@ -1197,7 +1197,7 @@ async function generateAssembledAnswer(catalogRow, btn, targetEl) {
   try {
     const resp = await fetch('https://ifs-error-assistant-proxy.vercel.app/api/messages', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await authedHeaders(),
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
         max_tokens: 1500,
@@ -2002,7 +2002,7 @@ async function sendChatMessage() {
   try {
     const resp = await fetch('https://ifs-error-assistant-proxy.vercel.app/api/messages', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await authedHeaders(),
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
         max_tokens: 1000,
@@ -2144,6 +2144,15 @@ async function loadCompany() {
   if (!profile || !profile.company_id) return null;
   const { data } = await sb.from('companies').select('*').eq('id', profile.company_id).maybeSingle();
   return data || null;
+}
+
+// Headers for every AI-proxy call: attaches the caller's Supabase access token so
+// the proxy can confirm the request comes from a signed-in user before spending
+// the API key.
+async function authedHeaders() {
+  const { data } = await sb.auth.getSession();
+  const token = data.session ? data.session.access_token : '';
+  return { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token };
 }
 
 // ── Login / signup screen ──────────────────────────────────────
