@@ -383,9 +383,6 @@
     <button class="nav-item" data-tab="catalog">
       <span class="nav-icon">⚙️</span> Error catalog
     </button>
-    <button class="nav-item admin-only" data-tab="moat" style="display:none">
-      <span class="nav-icon">📈</span> Reuse insights
-    </button>
   </nav>
 
   <main class="main">
@@ -396,7 +393,6 @@
     <div id="tab-archive" style="display:none"></div>
     <div id="tab-library" style="display:none"></div>
     <div id="tab-catalog" style="display:none"></div>
-    <div id="tab-moat" style="display:none"></div>
   </main>
 </div>
 
@@ -460,14 +456,6 @@
   .plan-price span { font-size: 13px; font-weight: 500; color: var(--text-3); }
   .plan-desc { font-size: 12px; color: var(--text-3); flex: 1; }
   .plan-card .btn { margin-top: 6px; }
-  /* ── Moat / stat cards ── */
-  .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
-  .stat {
-    background: var(--surface-2); border: 1px solid var(--border);
-    border-radius: var(--radius); padding: 16px;
-  }
-  .stat-num { font-size: 30px; font-weight: 700; color: var(--accent); line-height: 1; }
-  .stat-label { font-size: 11px; color: var(--text-3); margin-top: 6px; }
 </style>
 
 <div id="authGate" class="auth-gate" style="display:none"></div>
@@ -704,7 +692,7 @@ document.querySelectorAll('.nav-item').forEach(btn => {
     document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     const tab = btn.dataset.tab;
-    ['troubleshoot', 'search', 'browse', 'chatbot', 'archive', 'library', 'catalog', 'moat'].forEach(t => {
+    ['troubleshoot', 'search', 'browse', 'chatbot', 'archive', 'library', 'catalog'].forEach(t => {
       document.getElementById('tab-' + t).style.display = t === tab ? '' : 'none';
     });
     if (tab === 'search') renderSearch();
@@ -713,7 +701,6 @@ document.querySelectorAll('.nav-item').forEach(btn => {
     if (tab === 'archive') renderArchive();
     if (tab === 'library') renderLibrary();
     if (tab === 'catalog') renderCatalog();
-    if (tab === 'moat') renderMoat();
   });
 });
 
@@ -1555,7 +1542,7 @@ function renderLibList() {
           <span>📦 ${escHtml(l.component_name || l.component || '—')}</span>
           <span style="font-family:var(--mono)">${escHtml(l.package_name || '—')}</span>
           <span>👤 ${escHtml(l.who_acts || '—')}</span>
-          <span>Served: ${l.times_served || 0} · Accepted: ${l.times_accepted || 0} · Rate: ${acceptRate}</span>
+          <span>✓ Accepted <b style="color:var(--accent)">${l.times_accepted || 0}</b>× · shown ${l.times_served || 0} · ${acceptRate}</span>
         </div>
         ${l.error_template ? `<div style="font-size:11px;color:var(--text-3);font-style:italic;margin-top:2px">${escHtml(l.error_template)}</div>` : ''}
         ${l.status === 'REJECTED' && l.reject_note ? `<div style="font-size:11px;color:var(--danger);margin-top:4px">✗ Rejected: ${escHtml(l.reject_note)}</div>` : ''}
@@ -2416,61 +2403,7 @@ async function handleAcceptInvite() {
 }
 
 // ── User bar (header, when logged in) ──────────────────────────
-// ── Moat dashboard (platform_admin) ────────────────────────────
-// Cross-company reuse: does one company's fix actually help others? The number
-// that validates the core thesis before we invest in the marketplace.
-async function renderMoat() {
-  const el = document.getElementById('tab-moat');
-  el.innerHTML = `<div class="card"><div class="empty">Loading usage…</div></div>`;
-  // How often each solution is accepted by end users — the basis for consultant credit.
-  // No company dimension: one solution per error, counted by total acceptances.
-  const { data: sols, error } = await sb.from('solutions')
-    .select('error_code, title, source, status, times_accepted, times_served')
-    .order('times_accepted', { ascending: false });
-  if (error) {
-    el.innerHTML = `<div class="card"><div class="empty">Couldn't load usage: ${escHtml(error.message)}</div></div>`;
-    return;
-  }
-  const LIVE = ['PUBLISHED', 'VERIFIED', 'NEEDS_REVIEW'];
-  const live = sols.filter(s => LIVE.includes(s.status));
-  const used = sols.filter(s => (s.times_accepted || 0) > 0);
-  const totalAccepted = sols.reduce((a, s) => a + (s.times_accepted || 0), 0);
-  const totalServed = sols.reduce((a, s) => a + (s.times_served || 0), 0);
-  const acceptRate = totalServed > 0 ? Math.round((totalAccepted / totalServed) * 100) : 0;
-  const top = used.slice(0, 20);
-
-  el.innerHTML = `
-    <div class="card">
-      <div class="card-title">Solution usage</div>
-      <div style="font-size:13px;color:var(--text-2);margin-bottom:16px">How often each solution in the library is accepted by end users. This is what credits the consultant who provided the fix.</div>
-      <div class="stat-grid">
-        <div class="stat"><div class="stat-num">${totalAccepted}</div><div class="stat-label">total solution acceptances</div></div>
-        <div class="stat"><div class="stat-num">${used.length}</div><div class="stat-label">solutions used at least once</div></div>
-        <div class="stat"><div class="stat-num">${live.length}</div><div class="stat-label">live solutions in library</div></div>
-        <div class="stat"><div class="stat-num">${totalServed}</div><div class="stat-label">total times a solution was shown</div></div>
-        <div class="stat"><div class="stat-num">${acceptRate}%</div><div class="stat-label">acceptance rate (accepted ÷ shown)</div></div>
-      </div>
-    </div>
-    <div class="card">
-      <div class="card-title">Most-used solutions</div>
-      ${top.length ? `
-        <div style="font-size:11px;color:var(--text-3);margin-bottom:8px">Ranked by how many times end users accepted the fix — the basis for crediting its consultant.</div>
-        ${top.map(s => `
-          <div class="lib-item">
-            <div style="flex:1">
-              <span class="lib-code">${escHtml(s.error_code)}</span>
-              <span style="font-size:13px;font-weight:500;margin-left:8px">${escHtml(s.title)}</span>
-              ${s.source ? `<span style="font-size:11px;color:var(--text-3);margin-left:6px">· ${escHtml(s.source)}</span>` : ''}
-            </div>
-            <div style="font-weight:700;color:var(--accent)">${s.times_accepted} ${Number(s.times_accepted) === 1 ? 'use' : 'uses'}</div>
-          </div>`).join('')}`
-        : `<div class="empty">No solutions accepted yet — fills in as end users resolve errors and mark fixes helpful.</div>`}
-    </div>`;
-}
-
 function renderUserBar() {
-  // Platform-admin-only nav (e.g. the moat dashboard)
-  document.querySelectorAll('.admin-only').forEach(x => x.style.display = isPlatformAdmin ? '' : 'none');
   let bar = document.getElementById('authUserBar');
   if (!bar) {
     bar = document.createElement('div');
