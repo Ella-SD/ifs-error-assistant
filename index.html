@@ -2421,44 +2421,50 @@ async function handleAcceptInvite() {
 // that validates the core thesis before we invest in the marketplace.
 async function renderMoat() {
   const el = document.getElementById('tab-moat');
-  el.innerHTML = `<div class="card"><div class="empty">Loading reuse metrics…</div></div>`;
-  const { data: m, error } = await sb.rpc('moat_metrics');
+  el.innerHTML = `<div class="card"><div class="empty">Loading usage…</div></div>`;
+  // How often each solution is accepted by end users — the basis for consultant credit.
+  // No company dimension: one solution per error, counted by total acceptances.
+  const { data: sols, error } = await sb.from('solutions')
+    .select('error_code, title, source, status, times_accepted, times_served')
+    .order('times_accepted', { ascending: false });
   if (error) {
-    el.innerHTML = `<div class="card"><div class="empty">Couldn't load metrics: ${escHtml(error.message)}</div></div>`;
+    el.innerHTML = `<div class="card"><div class="empty">Couldn't load usage: ${escHtml(error.message)}</div></div>`;
     return;
   }
-  const { data: top } = await sb.rpc('top_reused_solutions', { p_limit: 15 });
-
-  const accepted = m.solutions_accepted || 0;
-  const cross = m.cross_company_solutions || 0;
-  const reuseRate = accepted > 0 ? Math.round((cross / accepted) * 100) : 0;
+  const LIVE = ['PUBLISHED', 'VERIFIED', 'NEEDS_REVIEW'];
+  const live = sols.filter(s => LIVE.includes(s.status));
+  const used = sols.filter(s => (s.times_accepted || 0) > 0);
+  const totalAccepted = sols.reduce((a, s) => a + (s.times_accepted || 0), 0);
+  const totalServed = sols.reduce((a, s) => a + (s.times_served || 0), 0);
+  const acceptRate = totalServed > 0 ? Math.round((totalAccepted / totalServed) * 100) : 0;
+  const top = used.slice(0, 20);
 
   el.innerHTML = `
     <div class="card">
-      <div class="card-title">Cross-company reuse — the moat</div>
-      <div style="font-size:13px;color:var(--text-2);margin-bottom:16px">Does one company's fix help other companies hitting the same IFS error? This is the number the whole thesis rests on.</div>
+      <div class="card-title">Solution usage</div>
+      <div style="font-size:13px;color:var(--text-2);margin-bottom:16px">How often each solution in the library is accepted by end users. This is what credits the consultant who provided the fix.</div>
       <div class="stat-grid">
-        <div class="stat"><div class="stat-num">${cross}</div><div class="stat-label">fixes reused across companies</div></div>
-        <div class="stat"><div class="stat-num">${reuseRate}%</div><div class="stat-label">of accepted fixes are cross-company</div></div>
-        <div class="stat"><div class="stat-num">${accepted}</div><div class="stat-label">fixes accepted by ≥1 company</div></div>
-        <div class="stat"><div class="stat-num">${m.distinct_companies || 0}</div><div class="stat-label">companies giving signal</div></div>
-        <div class="stat"><div class="stat-num">${m.live_solutions || 0}</div><div class="stat-label">live solutions in library</div></div>
-        <div class="stat"><div class="stat-num">${m.total_acceptances || 0}</div><div class="stat-label">total acceptances</div></div>
+        <div class="stat"><div class="stat-num">${totalAccepted}</div><div class="stat-label">total solution acceptances</div></div>
+        <div class="stat"><div class="stat-num">${used.length}</div><div class="stat-label">solutions used at least once</div></div>
+        <div class="stat"><div class="stat-num">${live.length}</div><div class="stat-label">live solutions in library</div></div>
+        <div class="stat"><div class="stat-num">${totalServed}</div><div class="stat-label">total times a solution was shown</div></div>
+        <div class="stat"><div class="stat-num">${acceptRate}%</div><div class="stat-label">acceptance rate (accepted ÷ shown)</div></div>
       </div>
     </div>
     <div class="card">
-      <div class="card-title">Most-reused fixes</div>
-      ${(top && top.length) ? `
-        <div style="font-size:11px;color:var(--text-3);margin-bottom:8px">Ranked by how many distinct companies accepted each fix — the flywheel's hits.</div>
-        ${top.map(t => `
+      <div class="card-title">Most-used solutions</div>
+      ${top.length ? `
+        <div style="font-size:11px;color:var(--text-3);margin-bottom:8px">Ranked by how many times end users accepted the fix — the basis for crediting its consultant.</div>
+        ${top.map(s => `
           <div class="lib-item">
             <div style="flex:1">
-              <span class="lib-code">${escHtml(t.error_code)}</span>
-              <span style="font-size:13px;font-weight:500;margin-left:8px">${escHtml(t.title)}</span>
+              <span class="lib-code">${escHtml(s.error_code)}</span>
+              <span style="font-size:13px;font-weight:500;margin-left:8px">${escHtml(s.title)}</span>
+              ${s.source ? `<span style="font-size:11px;color:var(--text-3);margin-left:6px">· ${escHtml(s.source)}</span>` : ''}
             </div>
-            <div style="font-weight:700;color:var(--accent)">${t.company_count} ${Number(t.company_count) === 1 ? 'company' : 'companies'}</div>
+            <div style="font-weight:700;color:var(--accent)">${s.times_accepted} ${Number(s.times_accepted) === 1 ? 'use' : 'uses'}</div>
           </div>`).join('')}`
-        : `<div class="empty">No cross-company reuse yet — expected this early. It fills in as more companies resolve the same errors.</div>`}
+        : `<div class="empty">No solutions accepted yet — fills in as end users resolve errors and mark fixes helpful.</div>`}
     </div>`;
 }
 
