@@ -642,7 +642,10 @@ async function saveLibrary() { /* no-op */ }
 // non-live, and stamps contributed_by = the caller).
 async function insertSolution(fields) {
   const row = Object.assign({ contributed_by_user_id: authUser.id }, fields);
-  const { data, error } = await sb.from('solutions').insert(row).select().maybeSingle();
+  // Return metadata only (never the instructions column) so this keeps working
+  // once migration 0010 locks SELECT(instructions) for non-admins. Callers reload
+  // via loadLibrary() and don't rely on the returned steps.
+  const { data, error } = await sb.from('solutions').insert(row).select(SOLUTION_META_COLS).maybeSingle();
   if (error) throw error;
   return data ? mapSolutionRow(data) : null;
 }
