@@ -377,7 +377,7 @@
       <span class="nav-icon">🗂</span> Archive
       <span class="nav-badge" id="archiveBadge">0</span>
     </button>
-    <button class="nav-item" data-tab="library">
+    <button class="nav-item" data-tab="library" id="navLibrary" style="display:none">
       <span class="nav-icon">📚</span> Solution library
     </button>
     <button class="nav-item" data-tab="catalog">
@@ -607,13 +607,31 @@ function mapSolutionRow(r) {
   };
 }
 
-// Load the shared solutions the current user is allowed to see (RLS decides:
-// live rows for everyone, own drafts for the contributor, everything for a
-// platform_admin).
+// Solution METADATA the end user is allowed to see — deliberately WITHOUT the
+// `instructions` column. Steps are never bulk-loaded into the browser; an end
+// user only ever receives them one resolution at a time through the gated
+// reveal_solution RPC / unlock endpoint. Platform admins manage the library, so
+// they load full rows (incl. steps) through the admin RPC, which also keeps
+// working once migration 0010 locks the instructions column.
+const SOLUTION_META_COLS = [
+  'id', 'error_code', 'lu_name', 'package_name', 'component_code', 'component_name',
+  'error_template', 'ifs_version', 'title', 'who_acts', 'status', 'source', 'reject_note',
+  'times_served', 'times_accepted', 'times_rejected', 'created_at', 'published_at',
+  'last_verified', 'contributed_by_user_id', 'assembled_sources', 'version'
+].join(',');
+
 async function loadLibrary() {
-  const { data, error } = await sb.from('solutions').select('*').order('created_at', { ascending: true });
+  if (isPlatformAdmin) {
+    // Full rows incl. steps, for library management (SECURITY DEFINER, admin-gated).
+    const { data, error } = await sb.rpc('admin_solutions_with_steps');
+    if (error) { console.error('loadLibrary(admin)', error); library = []; return; }
+    library = (data || []).map(mapSolutionRow);
+    return;
+  }
+  const { data, error } = await sb.from('solutions')
+    .select(SOLUTION_META_COLS).order('created_at', { ascending: true });
   if (error) { console.error('loadLibrary', error); library = []; return; }
-  library = (data || []).map(mapSolutionRow);
+  library = (data || []).map(mapSolutionRow);   // instructions -> [] (not selected)
 }
 
 // Deprecated: writes now go straight to Supabase. Kept as a no-op so any missed
@@ -821,7 +839,6 @@ async function analyzeError() {
   btn.innerHTML = '<span class="spin"></span> Step 1: Reading error text...';
   resultArea.innerHTML = '';
   activityContext = document.getElementById('activityInput')?.value?.trim() || '';
-  currentResolutionRef = crypto.randomUUID();   // one billable resolution per analysis
 
   try {
     // STEP 1: Extract error text from screenshot (vision only, no catalog)
@@ -937,22 +954,14 @@ Which candidate best matches the extracted error?`
       }
     }
 
-    // STEP 3: Check solution library using error_code from catalog match
-    // Only PUBLISHED / VERIFIED / NEEDS_REVIEW (flagged but still live) solutions are shown to end users
-    const isLive = l => l.instructions && l.instructions.length > 0 &&
-      (l.status === 'PUBLISHED' || l.status === 'VERIFIED' || l.status === 'NEEDS_REVIEW');
+    // STEP 3: Check solution library using error_code from catalog match. Only
+    // live rows (PUBLISHED / VERIFIED / NEEDS_REVIEW) are offered to end users. A
+    // live status implies steps exist, so we no longer test instructions here —
+    // end users don't load the steps at all (they arrive via the gated reveal).
     const libMatch = confirmedMatch
-      ? library.find(l => l.error_code === confirmedMatch.row.ERROR_CODE && isLive(l))
-      : library.find(l => isLive(l) && extracted.error_text.toLowerCase().includes(l.error_code.toLowerCase()));
-
-    // Update served count and status
-    if (libMatch) {
-      const idx = library.findIndex(l => l.id === libMatch.id);
-      if (idx !== -1) {
-        library[idx].times_served = (library[idx].times_served || 0) + 1;   // optimistic
-        sb.rpc('record_solution_served', { p_solution_id: libMatch.id });   // fire-and-forget
-      }
-    }
+      ? library.find(l => l.error_code === confirmedMatch.row.ERROR_CODE && isLiveSolution(l))
+      : library.find(l => isLiveSolution(l) && extracted.error_text.toLowerCase().includes(l.error_code.toLowerCase()));
+    // (The serve is counted server-side when the steps are actually revealed.)
 
     // Archive the submission into the company-private archive_entries table.
     // (Skipped for a platform_admin, who has no company context.)
@@ -1005,24 +1014,23 @@ function renderResult(extracted, catalogMatch, libMatch, debugInfo) {
     ${activityContext ? `<div style="font-size:11px;color:var(--text-3);margin-bottom:12px">🎯 User was trying to: <b style="color:var(--text-2)">${escHtml(activityContext)}</b></div>` : ''}
   `;
 
-  // If we have a library solution — show it directly
+  // If we have a library solution — open a gated resolution. Subscribers/admin
+  // see the steps immediately; PAYG users get the $4.99 preview→pay→reveal. The
+  // steps themselves are fetched from the server, never from the client array.
   if (libMatch) {
     resultArea.innerHTML = `
       <div class="card">
-        <span class="match-badge high">✓ Solution found</span>
         ${extractedHtml}
-        <div class="solution-header">${escHtml(libMatch.title)}</div>
-        <div class="solution-sub">📦 ${escHtml(libMatch.component_name || libMatch.component || '—')} &nbsp;·&nbsp; 👤 ${escHtml(libMatch.who_acts)}</div>
-        <ul class="step-list">
-          ${libMatch.instructions.map((s, i) => `
-            <li class="step-row">
-              <span class="step-num">${i + 1}.</span>
-              <span class="step-text">${escHtml(s)}</span>
-            </li>`).join('')}
-        </ul>
+        <div id="resolveArea"></div>
         ${catalogMatch ? renderTechToggle(catalogMatch) : ''}
-        ${renderFeedback(libMatch.id)}
       </div>`;
+    openResolution(libMatch, {
+      error_code: libMatch.error_code,
+      error_text: extracted.error_text,
+      screen_name: extracted.screen_name || null,
+      version_hint: extracted.ifs_version_hint || null,
+      confidence: catalogMatch ? catalogMatch.confidence : 'high'
+    }, document.getElementById('resolveArea'));
     return;
   }
 
@@ -1038,7 +1046,7 @@ function renderResult(extracted, catalogMatch, libMatch, debugInfo) {
         </div>
         <div class="btn-row" style="margin-top:12px">
           <button class="btn btn-primary" id="assembleBtn">🪄 Search docs &amp; assemble a fix</button>
-          <button class="btn btn-ghost" onclick="switchToAddSolution('${escHtml(catalogMatch.row.ERROR_CODE)}', '${escHtml(catalogMatch.row.COMPONENT_NAME)}')">+ Add solution manually</button>
+          ${isPlatformAdmin ? `<button class="btn btn-ghost" onclick="switchToAddSolution('${escHtml(catalogMatch.row.ERROR_CODE)}', '${escHtml(catalogMatch.row.COMPONENT_NAME)}')">+ Add solution manually</button>` : ''}
         </div>
         <div id="assembledArea" style="margin-top:12px"></div>
         ${renderTechToggle(catalogMatch)}
@@ -1062,7 +1070,7 @@ function renderResult(extracted, catalogMatch, libMatch, debugInfo) {
         ${libMatch ? '' : `
         <div class="btn-row" style="margin-top:12px">
           <button class="btn btn-primary" id="assembleBtn">🪄 Search docs &amp; assemble a fix</button>
-          <button class="btn btn-ghost" onclick="switchToAddSolution('${escHtml(catalogMatch.row.ERROR_CODE)}', '${escHtml(catalogMatch.row.COMPONENT_NAME)}')">+ Add solution manually</button>
+          ${isPlatformAdmin ? `<button class="btn btn-ghost" onclick="switchToAddSolution('${escHtml(catalogMatch.row.ERROR_CODE)}', '${escHtml(catalogMatch.row.COMPONENT_NAME)}')">+ Add solution manually</button>` : ''}
         </div>
         <div id="assembledArea" style="margin-top:12px"></div>`}
         ${renderTechToggle(catalogMatch)}
@@ -1086,7 +1094,7 @@ function renderResult(extracted, catalogMatch, libMatch, debugInfo) {
         <div class="btn-row" style="margin-top:10px;justify-content:center;flex-wrap:wrap">
           ${extracted.error_text ? `<button class="btn btn-primary" id="assembleRawBtn">🪄 Search docs &amp; assemble a fix</button>` : ''}
           ${extracted.error_text ? `<button class="btn btn-ghost" id="askChatBtn">💬 Ask about this in chat</button>` : ''}
-          <button class="btn btn-ghost" onclick="switchToAddSolution('', '')">+ Add to library manually</button>
+          ${isPlatformAdmin ? `<button class="btn btn-ghost" onclick="switchToAddSolution('', '')">+ Add to library manually</button>` : ''}
         </div>
         <div id="assembledArea" style="margin-top:12px;text-align:left"></div>
       </div>
@@ -1179,34 +1187,160 @@ function renderVerification(match) {
     </div>`;
 }
 
-function renderFeedback(libMatchId) {
-  const id = libMatchId || '';
-  return `
-    <div class="feedback-row">
-      <span class="feedback-label">Did this solve your issue?</span>
-      <button class="feedback-btn" onclick="recordFeedback('${id}', true, this)">✓ Yes</button>
-      <button class="feedback-btn" onclick="recordFeedback('${id}', false, this)">✗ No</button>
-    </div>`;
+// ── GATED RESOLUTION REVEAL ────────────────────────────────────
+// The single path by which any solution's steps reach the user. Given a matched
+// live solution (metadata only) + match context, it opens a resolution record,
+// then either reveals the steps for free (subscriber / platform admin) or shows
+// the $4.99 preview→pay gate (PAYG). Steps are always fetched from the server —
+// reveal_solution (subscribers) or /api/billing/unlock (PAYG) — never read from
+// the client. Post-reveal thumbs feed record_outcome (accept / refund signal).
+async function openResolution(sol, ctx, container) {
+  if (!container) return;
+  container.innerHTML = `<div style="font-size:12px;color:var(--text-3)"><span class="spin"></span> Checking your access…</div>`;
+  let resolutionId;
+  try {
+    const { data, error } = await sb.rpc('start_resolution', {
+      p_error_code: ctx.error_code || sol.error_code || null,
+      p_error_text: ctx.error_text || null,
+      p_screen_name: ctx.screen_name || null,
+      p_version_hint: ctx.version_hint || null,
+      p_match_confidence: ctx.confidence || null,
+      p_solution_id: sol.id
+    });
+    if (error) throw error;
+    resolutionId = data;
+  } catch (e) {
+    container.innerHTML = `<div style="font-size:12px;color:var(--danger)">Couldn't start this resolution: ${escHtml(e.message || 'unknown error')}</div>`;
+    return;
+  }
+
+  if (hasActiveSub || isPlatformAdmin) {
+    await revealFree(resolutionId, sol, container);
+  } else if (paygReady) {
+    renderPaywall(resolutionId, sol, container);
+  } else {
+    renderNeedPlan(container);
+  }
 }
 
-async function recordFeedback(libMatchId, accepted, btn) {
-  btn.parentElement.innerHTML = accepted
-    ? '<span style="font-size:12px;color:var(--success)">✓ Great, glad it helped!</span>'
-    : '<span style="font-size:12px;color:var(--warning)">Thanks — we\'ll improve this solution.</span>';
-  // A resolution marked helpful is the billable event for pay-as-you-go
-  // (no-op for subscribers and platform admins; charged once per resolution).
-  if (accepted && !isPlatformAdmin) chargeResolution(currentResolutionRef);
-  if (!libMatchId) return;
-  // Counters + PUBLISHED->VERIFIED / ->NEEDS_REVIEW transitions are all done
-  // server-side by the RPC (a client cannot set an arbitrary status this way).
-  const { error } = await sb.rpc('record_solution_feedback', { p_solution_id: libMatchId, p_accepted: accepted });
-  if (error) { console.error('recordFeedback', error); return; }
-  // Refresh the local copy of just this solution so counts/status stay in sync.
-  const idx = library.findIndex(l => l.id === libMatchId);
-  if (idx !== -1) {
-    const { data } = await sb.from('solutions').select('*').eq('id', libMatchId).maybeSingle();
-    if (data) library[idx] = mapSolutionRow(data);
+// Subscriber / admin: free reveal via the SECURITY DEFINER RPC.
+async function revealFree(resolutionId, sol, container) {
+  container.innerHTML = `<div style="font-size:12px;color:var(--text-3)"><span class="spin"></span> Loading the fix…</div>`;
+  try {
+    const { data, error } = await sb.rpc('reveal_solution', { p_resolution_id: resolutionId });
+    if (error) throw error;
+    renderRevealedSteps(container, data, resolutionId, sol);
+  } catch (e) {
+    container.innerHTML = `<div style="font-size:12px;color:var(--danger)">Couldn't load the fix: ${escHtml(e.message || 'unknown error')}</div>`;
   }
+}
+
+function priceStr() { return '$' + (paygPriceCents / 100).toFixed(2); }
+
+// PAYG: preview (found + confidence + price) with the steps hidden until paid.
+function renderPaywall(resolutionId, sol, container) {
+  container.innerHTML = `
+    <span class="match-badge high">✓ Solution found</span>
+    <div class="solution-header">${escHtml(sol.title)}</div>
+    <div class="solution-sub">📦 ${escHtml(sol.component_name || sol.component || '—')} &nbsp;·&nbsp; 👤 ${escHtml(sol.who_acts || '—')}</div>
+    <div style="background:var(--surface-2);border:1px dashed var(--border-strong);border-radius:8px;padding:14px;margin-top:10px;text-align:center">
+      <div style="font-size:22px;margin-bottom:4px">🔒</div>
+      <div style="font-size:13px;color:var(--text-2);margin-bottom:2px">The step-by-step fix is ready.</div>
+      <div style="font-size:12px;color:var(--text-3);margin-bottom:12px">Unlock to view it here, and to download it. One-time charge — no subscription.</div>
+      <button class="btn btn-primary" id="unlockBtn_${resolutionId}">🔓 Unlock the fix for ${priceStr()}</button>
+      <div id="unlockErr_${resolutionId}" style="font-size:11px;color:var(--danger);margin-top:8px"></div>
+    </div>`;
+  document.getElementById('unlockBtn_' + resolutionId)
+    .addEventListener('click', (e) => doUnlock(resolutionId, sol, container, e.currentTarget));
+}
+
+// Charge the saved card once and reveal. The endpoint is idempotent per
+// resolution, so a retried click never double-charges.
+async function doUnlock(resolutionId, sol, container, btn) {
+  const errEl = document.getElementById('unlockErr_' + resolutionId);
+  if (errEl) errEl.textContent = '';
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span> Charging…';
+  try {
+    const resp = await fetch(`${BILLING_BASE}/unlock`, {
+      method: 'POST', headers: await authedHeaders(),
+      body: JSON.stringify({ resolution_id: resolutionId })
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error((data.error && data.error.message) || 'Unlock failed');
+    renderRevealedSteps(container, data, resolutionId, sol);
+  } catch (e) {
+    btn.disabled = false;
+    btn.innerHTML = `🔓 Unlock the fix for ${priceStr()}`;
+    if (errEl) errEl.textContent = e.message || 'Unlock failed';
+  }
+}
+
+// Render the revealed steps + download + post-reveal thumbs.
+function renderRevealedSteps(container, payload, resolutionId, sol) {
+  const steps = Array.isArray(payload.steps) ? payload.steps : [];
+  const title = payload.title || (sol && sol.title) || 'Solution';
+  const who = payload.who_acts || (sol && sol.who_acts) || '—';
+  container.innerHTML = `
+    <span class="match-badge high">✓ Solution</span>
+    <div class="solution-header">${escHtml(title)}</div>
+    <div class="solution-sub">👤 ${escHtml(who)}</div>
+    <ul class="step-list">
+      ${steps.map((s, i) => `
+        <li class="step-row">
+          <span class="step-num">${i + 1}.</span>
+          <span class="step-text">${escHtml(s)}</span>
+        </li>`).join('')}
+    </ul>
+    ${payload.charged_cents ? `<div style="font-size:11px;color:var(--success);margin-top:2px">✓ Charged $${(payload.charged_cents / 100).toFixed(2)}</div>` : ''}
+    <div class="btn-row" style="margin-top:10px">
+      <button class="btn btn-ghost" style="font-size:12px" id="dlBtn_${resolutionId}">⬇ Download steps</button>
+    </div>
+    <div class="feedback-row">
+      <span class="feedback-label">Did this solve your issue?</span>
+      <button class="feedback-btn" id="upBtn_${resolutionId}">✓ Yes</button>
+      <button class="feedback-btn" id="downBtn_${resolutionId}">✗ No</button>
+    </div>`;
+  document.getElementById('dlBtn_' + resolutionId)
+    .addEventListener('click', () => downloadSteps(title, who, steps));
+  document.getElementById('upBtn_' + resolutionId)
+    .addEventListener('click', (e) => recordResolutionOutcome(resolutionId, true, e.currentTarget));
+  document.getElementById('downBtn_' + resolutionId)
+    .addEventListener('click', (e) => recordResolutionOutcome(resolutionId, false, e.currentTarget));
+}
+
+// No plan at all (only reachable from Search/Browse, which everyone can open).
+function renderNeedPlan(container) {
+  container.innerHTML = `
+    <div style="background:var(--surface-2);border-radius:8px;padding:14px">
+      <div style="font-size:13px;color:var(--text-2);margin-bottom:6px">🔒 Unlock the step-by-step fix</div>
+      <div style="font-size:12px;color:var(--text-3);margin-bottom:12px">Subscribe for unlimited fixes, or set up pay-as-you-go (${priceStr()} per fix).</div>
+      <button class="btn btn-primary" id="goPlansBtn">See plans</button>
+    </div>`;
+  document.getElementById('goPlansBtn')
+    .addEventListener('click', () => document.querySelector('[data-tab="troubleshoot"]').click());
+}
+
+function downloadSteps(title, who, steps) {
+  const body = `${title}\nWho acts: ${who}\n\n` +
+    steps.map((s, i) => `${i + 1}. ${s}`).join('\n') +
+    `\n\n— IFS Error Assistant`;
+  const blob = new Blob([body], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = (title || 'ifs-fix').replace(/[^a-z0-9]+/gi, '-').toLowerCase().slice(0, 60) + '.txt';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+// Post-reveal thumbs = accept/verify (consultant-credit) + refund signal.
+async function recordResolutionOutcome(resolutionId, up, btn) {
+  btn.parentElement.innerHTML = up
+    ? '<span style="font-size:12px;color:var(--success)">✓ Great, glad it helped!</span>'
+    : '<span style="font-size:12px;color:var(--warning)">Thanks — flagged for review. If it didn\'t help, contact support for a refund.</span>';
+  const { error } = await sb.rpc('record_outcome', { p_resolution_id: resolutionId, p_up: up });
+  if (error) console.error('record_outcome', error);
 }
 
 // ── TIER 2 — ASSEMBLED ANSWER ──────────────────────────────────
@@ -1297,18 +1431,18 @@ Research and assemble a step-by-step fix for this error.`
     targetEl.innerHTML = `
       <div style="background:var(--surface-2);border:1px solid var(--accent-dim);border-radius:8px;padding:12px">
         <span class="match-badge medium" style="margin-bottom:8px;display:inline-block">🪄 AI-assembled — pending review</span>
-        <div class="solution-header">${escHtml(record.title)}</div>
-        <div class="solution-sub">👤 ${escHtml(record.who_acts || '—')}</div>
+        <div class="solution-header">${escHtml(parsed.title || ('Fix for ' + catalogRow.ERROR_CODE))}</div>
+        <div class="solution-sub">👤 ${escHtml(parsed.who_acts || '—')}</div>
         <ul class="step-list">
-          ${record.instructions.map((s, i) => `
+          ${normalizedSteps.map((s, i) => `
             <li class="step-row">
               <span class="step-num">${i + 1}.</span>
               <span class="step-text">${escHtml(s)}</span>
             </li>`).join('')}
         </ul>
-        ${record.assembled_sources.length > 0 ? `
+        ${(parsed.sources && parsed.sources.length > 0) ? `
           <div style="font-size:11px;color:var(--text-3);margin-top:10px">
-            Sources checked: ${record.assembled_sources.map(u => `<a href="${escHtml(u)}" target="_blank" rel="noopener" style="color:var(--accent)">${escHtml(u)}</a>`).join(' · ')}
+            Sources checked: ${parsed.sources.map(u => `<a href="${escHtml(u)}" target="_blank" rel="noopener" style="color:var(--accent)">${escHtml(u)}</a>`).join(' · ')}
           </div>` : ''}
         <div style="font-size:11px;color:var(--warning);margin-top:8px">⚠️ Not yet verified by a human. Saved to the Solution library under "Pending review" — approve it there before it's shown automatically to other users.</div>
       </div>`;
@@ -1379,6 +1513,12 @@ function renderArchive() {
 // ── LIBRARY TAB ───────────────────────────────────────────────
 function renderLibrary() {
   const el = document.getElementById('tab-library');
+  // Admin-managed surface — end users reach solutions only through the gated
+  // reveal, never this management view.
+  if (!isPlatformAdmin) {
+    el.innerHTML = `<div class="card"><div class="empty"><div class="empty-icon">🔒</div>The Solution library is managed by the platform team. Use Troubleshoot or Search to find a fix.</div></div>`;
+    return;
+  }
   el.innerHTML = `
     <div class="card">
       <button class="btn btn-primary" id="showAddBtn">+ Add solution</button>
@@ -1647,9 +1787,10 @@ function renderLibList() {
 }
 
 // ── SEARCH TAB ───────────────────────────────────────────────
+// Live = shown to end users. Status-only: a solution can't reach a live status
+// without steps, and end users don't load the steps array anyway (it's gated).
 function isLiveSolution(l) {
-  return l.instructions && l.instructions.length > 0 &&
-    (l.status === 'PUBLISHED' || l.status === 'VERIFIED' || l.status === 'NEEDS_REVIEW');
+  return l.status === 'PUBLISHED' || l.status === 'VERIFIED' || l.status === 'NEEDS_REVIEW';
 }
 
 function renderSearch() {
@@ -1731,9 +1872,9 @@ function runSearch() {
           <div class="empty-icon">🔎</div>
           No matches for "${escHtml(qRaw)}".
           <div style="font-size:12px;margin-top:6px">Try pasting more of the exact error message, or a couple of the distinctive words in it.</div>
-          <div style="margin-top:10px">
+          ${isPlatformAdmin ? `<div style="margin-top:10px">
             <button class="btn btn-primary" onclick="switchToAddSolution('', '')">+ Add this to the library</button>
-          </div>
+          </div>` : ''}
         </div>
       </div>`;
     return;
@@ -1742,20 +1883,18 @@ function runSearch() {
   let html = '';
 
   if (solutionHits.length > 0) {
+    const cta = (hasActiveSub || isPlatformAdmin) ? 'View the fix' : `🔓 Unlock the fix — ${priceStr()}`;
     html += `<div class="card"><div class="card-title" style="margin-bottom:10px">✓ Known solutions (${solutionHits.length})</div>`;
+    // Preview only — no steps in the list. Steps arrive one at a time through the
+    // gated reveal when the user chooses a specific fix.
     html += solutionHits.map(l => `
       <div style="border-bottom:1px solid var(--border);padding:12px 0">
         <span class="match-badge high" style="margin-bottom:8px;display:inline-block">✓ Solution available</span>
         <div class="solution-header">${escHtml(l.title)}</div>
         <div class="solution-sub">📦 ${escHtml(l.component_name || '—')} &nbsp;·&nbsp; 👤 ${escHtml(l.who_acts || '—')} &nbsp;·&nbsp; <span class="lib-code">${escHtml(l.error_code)}</span></div>
-        <ul class="step-list">
-          ${l.instructions.map((s, i) => `
-            <li class="step-row">
-              <span class="step-num">${i + 1}.</span>
-              <span class="step-text">${escHtml(s)}</span>
-            </li>`).join('')}
-        </ul>
-        ${renderFeedback(l.id)}
+        <div id="revealArea_${l.id}" style="margin-top:8px">
+          <button class="btn btn-primary" style="font-size:12px" data-reveal="${l.id}">${cta}</button>
+        </div>
       </div>`).join('');
     html += `</div>`;
   }
@@ -1772,10 +1911,10 @@ function runSearch() {
             </div>
             <div style="font-size:12px;color:var(--text)">${escHtml(r.ERROR_TEXT)}</div>
           </div>
-          <div style="display:flex;gap:6px;flex-shrink:0">
+          ${isPlatformAdmin ? `<div style="display:flex;gap:6px;flex-shrink:0">
             <button class="btn btn-primary" style="font-size:11px;padding:4px 8px;white-space:nowrap" data-assemble-search="${i}">🪄 Assemble</button>
             <button class="btn btn-ghost" style="font-size:11px;padding:4px 8px;white-space:nowrap" onclick="switchToAddSolution('${escHtml(r.ERROR_CODE)}', '${escHtml(r.COMPONENT_NAME)}')">+ Add manually</button>
-          </div>
+          </div>` : ''}
         </div>
         <div id="searchAssembled_${i}" style="margin-top:8px"></div>
       </div>`).join('');
@@ -1784,7 +1923,17 @@ function runSearch() {
 
   resultsEl.innerHTML = html;
 
-  if (catalogHits.length > 0) {
+  // Wire the gated reveal for each known solution.
+  resultsEl.querySelectorAll('[data-reveal]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const l = library.find(x => x.id === btn.dataset.reveal);
+      if (!l) return;
+      openResolution(l, { error_code: l.error_code, error_text: l.error_template || qRaw, confidence: 'high' },
+        document.getElementById('revealArea_' + l.id));
+    });
+  });
+
+  if (isPlatformAdmin && catalogHits.length > 0) {
     resultsEl.querySelectorAll('[data-assemble-search]').forEach(btn => {
       btn.addEventListener('click', () => {
         const i = btn.dataset.assembleSearch;
@@ -1859,19 +2008,16 @@ function renderBrowseCategory(el, category) {
     </div>`;
 
   if (solutions.length > 0) {
+    const cta = (hasActiveSub || isPlatformAdmin) ? 'View the fix' : `🔓 Unlock the fix — ${priceStr()}`;
     html += `<div class="card"><div class="card-title" style="margin-bottom:10px">✓ Published solutions (${solutions.length})</div>`;
+    // Preview only — steps are revealed one at a time through the gated flow.
     html += solutions.map(l => `
       <div style="border-bottom:1px solid var(--border);padding:12px 0">
         <div class="solution-header">${escHtml(l.title)}</div>
         <div class="solution-sub">👤 ${escHtml(l.who_acts || '—')} &nbsp;·&nbsp; <span class="lib-code">${escHtml(l.error_code)}</span></div>
-        <ul class="step-list">
-          ${l.instructions.map((s, i) => `
-            <li class="step-row">
-              <span class="step-num">${i + 1}.</span>
-              <span class="step-text">${escHtml(s)}</span>
-            </li>`).join('')}
-        </ul>
-        ${renderFeedback(l.id)}
+        <div id="revealArea_${l.id}" style="margin-top:8px">
+          <button class="btn btn-primary" style="font-size:12px" data-reveal="${l.id}">${cta}</button>
+        </div>
       </div>`).join('');
     html += `</div>`;
   }
@@ -1888,10 +2034,10 @@ function renderBrowseCategory(el, category) {
             </div>
             <div style="font-size:12px;color:var(--text)">${escHtml(r.ERROR_TEXT)}</div>
           </div>
-          <div style="display:flex;gap:6px;flex-shrink:0">
+          ${isPlatformAdmin ? `<div style="display:flex;gap:6px;flex-shrink:0">
             <button class="btn btn-primary" style="font-size:11px;padding:4px 8px;white-space:nowrap" data-assemble-browse="${i}">🪄 Assemble</button>
             <button class="btn btn-ghost" style="font-size:11px;padding:4px 8px;white-space:nowrap" onclick="switchToAddSolution('${escHtml(r.ERROR_CODE)}', '${escHtml(r.COMPONENT_NAME)}')">+ Add</button>
-          </div>
+          </div>` : ''}
         </div>
         <div id="browseAssembled_${i}" style="margin-top:8px"></div>
       </div>`).join('');
@@ -1912,13 +2058,25 @@ function renderBrowseCategory(el, category) {
     renderBrowse();
   });
 
-  el.querySelectorAll('[data-assemble-browse]').forEach(btn => {
+  // Gated reveal per published solution.
+  el.querySelectorAll('[data-reveal]').forEach(btn => {
     btn.addEventListener('click', () => {
-      const i = btn.dataset.assembleBrowse;
-      const row = shown[i];
-      generateAssembledAnswer(row, btn, document.getElementById('browseAssembled_' + i));
+      const l = library.find(x => x.id === btn.dataset.reveal);
+      if (!l) return;
+      openResolution(l, { error_code: l.error_code, error_text: l.error_template || null, confidence: 'high' },
+        document.getElementById('revealArea_' + l.id));
     });
   });
+
+  if (isPlatformAdmin) {
+    el.querySelectorAll('[data-assemble-browse]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const i = btn.dataset.assembleBrowse;
+        const row = shown[i];
+        generateAssembledAnswer(row, btn, document.getElementById('browseAssembled_' + i));
+      });
+    });
+  }
 }
 
 
@@ -2036,7 +2194,7 @@ async function sendChatMessage() {
 
 You do NOT have access to this user's actual IFS company data, database, or account — never imply you can look anything up for their specific company. If a question depends on company-specific configuration, say so and suggest they check with their IFS Admin.
 
-If the user describes an actual error message or code they're seeing, tell them to use the Troubleshoot tab (screenshot) or Search tab instead, since those give a verified, curated fix rather than a general answer.
+IMPORTANT — scope of your answers: give general orientation and background only. If the user describes a specific error message or code they're seeing and wants the fix, do NOT write out a specific numbered step-by-step resolution here. Instead, briefly explain in general terms what that kind of error usually means, and direct them to the Troubleshoot tab (upload a screenshot) or the Search tab to get the verified, curated step-by-step fix. That curated resolution is the paid product; this chat is for general questions, so keep it high-level and don't reproduce a full fix procedure for a specific error.
 
 Use web search when it would make your answer more accurate (checking IFS documentation or the community forum), but keep answers conversational and reasonably concise — a few short paragraphs at most, not an exhaustive document. Write in your own words, don't quote sources at length.`,
         messages: chatHistory.map(m => ({ role: m.role, content: m.content }))
@@ -2184,7 +2342,7 @@ async function authedHeaders() {
 const BILLING_BASE = 'https://ifs-error-assistant-proxy.vercel.app/api/billing';
 let hasActiveSub = false;
 let paygReady = false;
-let currentResolutionRef = null;   // unique per troubleshoot analysis, for PAYG charging
+let paygPriceCents = 499;   // unlock price, refreshed from app_config at boot
 
 const ACTIVE_STATUSES = ['active', 'trialing'];
 function computeAccess() {
@@ -2194,6 +2352,12 @@ function computeAccess() {
   paygReady = !!(profile && profile.payg_ready);
 }
 function canResolve() { return hasActiveSub || paygReady; }
+// The unlock price is editable in app_config (platform_admin only); everyone may
+// read it to render the $4.99 preview.
+async function loadPaygPrice() {
+  const { data } = await sb.from('app_config').select('value').eq('key', 'payg_price_cents').maybeSingle();
+  if (data && data.value) { const n = parseInt(data.value, 10); if (!isNaN(n)) paygPriceCents = n; }
+}
 function planLabel() {
   if (company && ACTIVE_STATUSES.includes(company.subscription_status)) return 'Company plan';
   if (profile && ACTIVE_STATUSES.includes(profile.subscription_status)) return 'Personal plan';
@@ -2220,17 +2384,9 @@ const startCheckout   = (tier, btn) => billingRedirect('checkout', { tier }, btn
 const startPaygSetup  = (btn) => billingRedirect('setup-payg', {}, btn);
 const openBillingPortal = (btn) => billingRedirect('portal', {}, btn);
 
-// Charge a PAYG user $15 when a resolution is marked helpful. Subscribers are
-// covered (checked here and server-side); the server keys on resolution_ref so a
-// repeat click never double-charges.
-async function chargeResolution(resolutionRef) {
-  if (hasActiveSub || !resolutionRef) return;
-  try {
-    await fetch(`${BILLING_BASE}/charge-resolution`, {
-      method: 'POST', headers: await authedHeaders(), body: JSON.stringify({ resolution_ref: resolutionRef })
-    });
-  } catch (e) { console.error('charge-resolution', e); }
-}
+// (PAYG is now charged at unlock time via /api/billing/unlock — see doUnlock —
+// not on a post-hoc "was this helpful?" click. The old charge-resolution path
+// was removed in the paid-resolution rework.)
 
 // Shown in the Troubleshoot tab when the user has no way to pay yet.
 function renderUpgrade(targetEl) {
@@ -2255,8 +2411,8 @@ function renderUpgrade(targetEl) {
         </div>` : ''}
         <div class="plan-card">
           <div class="plan-name">Pay as you go</div>
-          <div class="plan-price">$15<span>/fix</span></div>
-          <div class="plan-desc">Charged only when a fix is marked helpful.</div>
+          <div class="plan-price">${priceStr()}<span>/fix</span></div>
+          <div class="plan-desc">See a preview first — charged only when you unlock the steps.</div>
           <button class="btn btn-ghost" id="planPayg">Add a card</button>
         </div>
       </div>
@@ -2421,6 +2577,9 @@ function renderUserBar() {
       <button id="billingBtn">${hasCustomer ? 'Manage billing' : 'Upgrade'}</button>` : ''}
     <button id="authSignout">Sign out</button>`;
   document.getElementById('authSignout').onclick = () => sb.auth.signOut();
+  // The Solution library is admin-managed — only platform admins see the tab.
+  const navLib = document.getElementById('navLibrary');
+  if (navLib) navLib.style.display = isPlatformAdmin ? '' : 'none';
   const bb = document.getElementById('billingBtn');
   if (bb) bb.onclick = () => {
     if (hasCustomer) openBillingPortal(bb);
@@ -2453,7 +2612,7 @@ async function boot() {
     document.body.classList.add('app-ready');
     renderUserBar();
     if (!appDataLoaded) {
-      await Promise.all([loadCatalog(), loadLibrary(), loadArchive(), loadIfsVersionSetting()]);
+      await Promise.all([loadCatalog(), loadLibrary(), loadArchive(), loadIfsVersionSetting(), loadPaygPrice()]);
       appDataLoaded = true;
       renderTroubleshoot();
       handleBillingReturn();
