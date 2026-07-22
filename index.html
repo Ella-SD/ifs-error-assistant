@@ -1375,11 +1375,18 @@ function renderRevealedSteps(container, payload, resolutionId, sol) {
   document.getElementById('upBtn_' + resolutionId)
     .addEventListener('click', (e) => recordResolutionOutcome(resolutionId, true, e.currentTarget));
   document.getElementById('downBtn_' + resolutionId)
-    .addEventListener('click', (e) => showEscalationForm(resolutionId, refundable, e.currentTarget.closest('.feedback-row')));
+    .addEventListener('click', (e) => showEscalationForm(resolutionId, refundable, e.currentTarget.closest('.feedback-row'), sol && sol.error_code));
+}
+
+// The canonical module for an error = the catalog's component for that error code.
+function catalogModuleFor(errorCode) {
+  if (!errorCode) return null;
+  const row = catalog.find(r => r.ERROR_CODE === errorCode);
+  return row ? row.COMPONENT_NAME : null;
 }
 
 // 👎 path: capture optional context, show the consent note, then escalate.
-function showEscalationForm(resolutionId, refundable, rowEl) {
+function showEscalationForm(resolutionId, refundable, rowEl, errorCode) {
   if (!rowEl) return;
   rowEl.innerHTML = `
     <div style="flex:1">
@@ -1391,14 +1398,14 @@ function showEscalationForm(resolutionId, refundable, rowEl) {
       <div id="escErr_${resolutionId}" style="font-size:11px;color:var(--danger);margin-top:6px"></div>
     </div>`;
   document.getElementById('escBtn_' + resolutionId)
-    .addEventListener('click', (e) => submitEscalation(resolutionId, refundable, e.currentTarget, rowEl));
+    .addEventListener('click', (e) => submitEscalation(resolutionId, refundable, e.currentTarget, rowEl, errorCode));
 }
 
-async function submitEscalation(resolutionId, refundable, btn, rowEl) {
+async function submitEscalation(resolutionId, refundable, btn, rowEl, errorCode) {
   const ctx = (document.getElementById('escCtx_' + resolutionId)?.value || '').trim();
   btn.disabled = true;
   btn.innerHTML = '<span class="spin"></span> Submitting…';
-  const { error } = await sb.rpc('escalate_resolution', { p_resolution_id: resolutionId, p_context: ctx });
+  const { error } = await sb.rpc('escalate_resolution', { p_resolution_id: resolutionId, p_context: ctx, p_module: catalogModuleFor(errorCode) });
   if (error) {
     btn.disabled = false; btn.innerHTML = 'Request a review';
     const errEl = document.getElementById('escErr_' + resolutionId);
