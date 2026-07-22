@@ -1055,7 +1055,8 @@ function renderResult(extracted, catalogMatch, libMatch, debugInfo) {
         ${renderTechToggle(catalogMatch)}
       </div>`;
     const abtn = document.getElementById('assembleBtn');
-    abtn.addEventListener('click', () => generateAssembledAnswer(catalogMatch.row, abtn, document.getElementById('assembledArea')));
+    abtn.addEventListener('click', () => generateAssembledAnswer(catalogMatch.row, abtn, document.getElementById('assembledArea'),
+      { gated: true, ctx: { error_text: extracted.error_text, screen_name: extracted.screen_name, version_hint: extracted.ifs_version_hint, confidence: catalogMatch.confidence } }));
     return;
   }
 
@@ -1079,7 +1080,8 @@ function renderResult(extracted, catalogMatch, libMatch, debugInfo) {
         ${renderTechToggle(catalogMatch)}
       </div>`;
     const abtn = document.getElementById('assembleBtn');
-    abtn?.addEventListener('click', () => generateAssembledAnswer(catalogMatch.row, abtn, document.getElementById('assembledArea')));
+    abtn?.addEventListener('click', () => generateAssembledAnswer(catalogMatch.row, abtn, document.getElementById('assembledArea'),
+      { gated: true, ctx: { error_text: extracted.error_text, screen_name: extracted.screen_name, version_hint: extracted.ifs_version_hint, confidence: catalogMatch.confidence } }));
     return;
   }
 
@@ -1113,7 +1115,8 @@ function renderResult(extracted, catalogMatch, libMatch, debugInfo) {
         ERROR_TEXT: extracted.error_text,
         IFS_VERSION: 'IFS10'
       };
-      generateAssembledAnswer(pseudoRow, assembleRawBtn, document.getElementById('assembledArea'));
+      generateAssembledAnswer(pseudoRow, assembleRawBtn, document.getElementById('assembledArea'),
+        { gated: true, ctx: { error_text: extracted.error_text, screen_name: extracted.screen_name, version_hint: extracted.ifs_version_hint, confidence: null } });
     });
   }
 
@@ -1222,11 +1225,15 @@ async function openResolution(sol, ctx, container, opts) {
     return;
   }
 
+  // Display price: assemble_price for an unreviewed AI fix, else the match price.
+  // (The server independently picks the same key by status when it charges.)
+  const priceCents = opts.priceCents || paygPriceCents;
+
   if (hasActiveSub || isPlatformAdmin) {
     await revealFree(resolutionId, sol, container);
   } else if (paygReady) {
-    if (opts.payMode === 'direct') chargeAndReveal(resolutionId, sol, container);
-    else renderPaywall(resolutionId, sol, container);
+    if (opts.payMode === 'direct') chargeAndReveal(resolutionId, sol, container, priceCents);
+    else renderPaywall(resolutionId, sol, container, priceCents);
   } else {
     renderNeedPlan(container);
   }
@@ -1244,30 +1251,41 @@ async function revealFree(resolutionId, sol, container) {
   }
 }
 
-function priceStr() { return '$' + (paygPriceCents / 100).toFixed(2); }
+function priceStr() { return priceStrOf(paygPriceCents); }
+function priceStrOf(cents) { return '$' + ((cents || 0) / 100).toFixed(2); }
 
 // PAYG: preview (found + confidence + price) with the steps hidden until paid.
-function renderPaywall(resolutionId, sol, container) {
+// priceCents is for DISPLAY only; the server re-derives the real charge by status.
+function renderPaywall(resolutionId, sol, container, priceCents) {
+  priceCents = priceCents || paygPriceCents;
+  const unreviewed = !isLiveSolution(sol);   // AI-assembled fix, not yet human-reviewed
+  const badge = unreviewed
+    ? `<span class="match-badge medium">🪄 AI-assembled fix ready</span>`
+    : `<span class="match-badge high">✓ Solution found</span>`;
+  const readyLine = unreviewed
+    ? 'A step-by-step fix, freshly researched by AI for this error.'
+    : 'The step-by-step fix is ready.';
   container.innerHTML = `
-    <span class="match-badge high">✓ Solution found</span>
+    ${badge}
     <div class="solution-header">${escHtml(sol.title)}</div>
     <div class="solution-sub">📦 ${escHtml(sol.component_name || sol.component || '—')} &nbsp;·&nbsp; 👤 ${escHtml(sol.who_acts || '—')}</div>
     <div style="background:var(--surface-2);border:1px dashed var(--border-strong);border-radius:8px;padding:14px;margin-top:10px;text-align:center">
       <div style="font-size:22px;margin-bottom:4px">🔒</div>
-      <div style="font-size:13px;color:var(--text-2);margin-bottom:2px">The step-by-step fix is ready.</div>
+      <div style="font-size:13px;color:var(--text-2);margin-bottom:2px">${readyLine}</div>
       <div style="font-size:12px;color:var(--text-3);margin-bottom:12px">Unlock to view it here, and to download it. One-time charge — no subscription.</div>
-      <button class="btn btn-primary" id="unlockBtn_${resolutionId}">🔓 Unlock the fix for ${priceStr()}</button>
+      <button class="btn btn-primary" id="unlockBtn_${resolutionId}">🔓 Unlock the fix for ${priceStrOf(priceCents)}</button>
       <div id="unlockErr_${resolutionId}" style="font-size:11px;color:var(--danger);margin-top:8px"></div>
     </div>`;
   document.getElementById('unlockBtn_' + resolutionId)
-    .addEventListener('click', () => chargeAndReveal(resolutionId, sol, container));
+    .addEventListener('click', () => chargeAndReveal(resolutionId, sol, container, priceCents));
 }
 
 // Charge the saved card once and reveal. The endpoint is idempotent per
 // resolution, so a retried click never double-charges. On failure we fall back to
 // the paywall panel (with a retry button) and surface the error there.
-async function chargeAndReveal(resolutionId, sol, container) {
-  container.innerHTML = `<div style="font-size:12px;color:var(--text-3);padding:6px 0"><span class="spin"></span> Charging ${priceStr()}…</div>`;
+async function chargeAndReveal(resolutionId, sol, container, priceCents) {
+  priceCents = priceCents || paygPriceCents;
+  container.innerHTML = `<div style="font-size:12px;color:var(--text-3);padding:6px 0"><span class="spin"></span> Charging ${priceStrOf(priceCents)}…</div>`;
   try {
     const resp = await fetch(`${BILLING_BASE}/unlock`, {
       method: 'POST', headers: await authedHeaders(),
@@ -1277,7 +1295,7 @@ async function chargeAndReveal(resolutionId, sol, container) {
     if (!resp.ok) throw new Error((data.error && data.error.message) || 'Unlock failed');
     renderRevealedSteps(container, data, resolutionId, sol);
   } catch (e) {
-    renderPaywall(resolutionId, sol, container);
+    renderPaywall(resolutionId, sol, container, priceCents);
     const errEl = document.getElementById('unlockErr_' + resolutionId);
     if (errEl) errEl.textContent = e.message || 'Unlock failed';
   }
@@ -1288,8 +1306,9 @@ function renderRevealedSteps(container, payload, resolutionId, sol) {
   const steps = Array.isArray(payload.steps) ? payload.steps : [];
   const title = payload.title || (sol && sol.title) || 'Solution';
   const who = payload.who_acts || (sol && sol.who_acts) || '—';
+  const unreviewed = sol && !isLiveSolution(sol);   // AI-assembled, not human-reviewed
   container.innerHTML = `
-    <span class="match-badge high">✓ Solution</span>
+    <span class="match-badge ${unreviewed ? 'medium">🪄 AI-assembled fix' : 'high">✓ Solution'}</span>
     <div class="solution-header">${escHtml(title)}</div>
     <div class="solution-sub">👤 ${escHtml(who)}</div>
     <ul class="step-list">
@@ -1299,6 +1318,7 @@ function renderRevealedSteps(container, payload, resolutionId, sol) {
           <span class="step-text">${escHtml(s)}</span>
         </li>`).join('')}
     </ul>
+    ${unreviewed ? `<div style="font-size:11px;color:var(--warning);margin-top:6px">⚠️ Freshly assembled by AI and not yet human-verified — please tell us below whether it worked.</div>` : ''}
     ${payload.charged_cents ? `<div style="font-size:11px;color:var(--success);margin-top:2px">✓ Charged $${(payload.charged_cents / 100).toFixed(2)}</div>` : ''}
     <div class="btn-row" style="margin-top:10px">
       <button class="btn btn-ghost" style="font-size:12px" id="dlBtn_${resolutionId}">⬇ Download steps</button>
@@ -1354,7 +1374,12 @@ async function recordResolutionOutcome(resolutionId, up, btn) {
 // Searches IFS docs / community / general web via the API's server-side web_search
 // tool, has Claude write original step-by-step instructions, and saves the result
 // into the library as an unverified AI-sourced draft pending admin review.
-async function generateAssembledAnswer(catalogRow, btn, targetEl) {
+// opts.gated (end-user path): after assembling, route the reveal through the paid
+// gate (subscribers/admin free, PAYG pays assemble_price) instead of showing the
+// steps for free. opts.ctx carries the resolution context. Without opts.gated
+// (admin library-seeding path) the assembled steps render inline as before.
+async function generateAssembledAnswer(catalogRow, btn, targetEl, opts) {
+  opts = opts || {};
   const originalLabel = btn.innerHTML;
   btn.disabled = true;
   btn.innerHTML = '<span class="spin"></span> Searching IFS docs & community...';
@@ -1416,8 +1441,9 @@ Research and assemble a step-by-step fix for this error.`
     // Save as a new AI-assembled draft pending admin review, owned by this user.
     // Under the shared model we always insert a fresh pending row rather than
     // editing a shared seed the user doesn't own.
+    let newSol = null;
     try {
-      await insertSolution({
+      newSol = await insertSolution({
         error_code: catalogRow.ERROR_CODE,
         lu_name: catalogRow.LU_NAME || null,
         package_name: catalogRow.PACKAGE_NAME || null,
@@ -1435,6 +1461,15 @@ Research and assemble a step-by-step fix for this error.`
       await loadLibrary();
     } catch (e) { console.error('assemble save', e); }
 
+    // End-user path: the assembled fix is a paid resolution — gate the reveal at
+    // assemble_price (subscribers/admin see it free) rather than showing it free.
+    if (opts.gated && newSol) {
+      btn.style.display = 'none';   // the gated reveal takes over this area
+      openResolution(newSol, opts.ctx || {}, targetEl, { priceCents: assemblePriceCents });
+      return;
+    }
+
+    // Admin / library-seeding path: show the assembled steps inline.
     targetEl.innerHTML = `
       <div style="background:var(--surface-2);border:1px solid var(--accent-dim);border-radius:8px;padding:12px">
         <span class="match-badge medium" style="margin-bottom:8px;display:inline-block">🪄 AI-assembled — pending review</span>
@@ -2349,7 +2384,8 @@ async function authedHeaders() {
 const BILLING_BASE = 'https://ifs-error-assistant-proxy.vercel.app/api/billing';
 let hasActiveSub = false;
 let paygReady = false;
-let paygPriceCents = 499;   // unlock price, refreshed from app_config at boot
+let paygPriceCents = 499;      // curated-match unlock price, from app_config at boot
+let assemblePriceCents = 499;  // AI-assembled-fix unlock price, from app_config
 
 const ACTIVE_STATUSES = ['active', 'trialing'];
 function computeAccess() {
@@ -2362,8 +2398,13 @@ function canResolve() { return hasActiveSub || paygReady; }
 // The unlock price is editable in app_config (platform_admin only); everyone may
 // read it to render the $4.99 preview.
 async function loadPaygPrice() {
-  const { data } = await sb.from('app_config').select('value').eq('key', 'payg_price_cents').maybeSingle();
-  if (data && data.value) { const n = parseInt(data.value, 10); if (!isNaN(n)) paygPriceCents = n; }
+  const { data } = await sb.from('app_config').select('key,value').in('key', ['payg_price_cents', 'assemble_price']);
+  (data || []).forEach(r => {
+    const n = parseInt(r.value, 10);
+    if (isNaN(n)) return;
+    if (r.key === 'payg_price_cents') paygPriceCents = n;
+    if (r.key === 'assemble_price') assemblePriceCents = n;
+  });
 }
 function planLabel() {
   if (company && ACTIVE_STATUSES.includes(company.subscription_status)) return 'Company plan';
