@@ -10,6 +10,16 @@ Legend: **[Ella]** dashboard/keys/decisions · **[Code]** app/infra changes · *
 
 ---
 
+## Prerequisite — business identity + domain (gates steps 1, 2, 3)
+Identified 2026-07-22. Several go-live items can't be finalized without these.
+- [ ] **[Ella]** Register the **legal business entity** (name/type/jurisdiction — with advisors; "Hong Shi" is only the current Stripe display name, not necessarily final).
+- [ ] **[Ella]** Register a **domain**, and set up a **contact/support email** on it (used by the legal page + SMTP from-address).
+- [ ] **[Ella]** Complete the **Stripe business profile** (entity, address, payout bank account) — required to enable LIVE mode.
+- [ ] *(Optional but recommended)* Move the app onto the custom domain instead of `ella-sd.github.io`. **[Code]** coordinated pass: proxy `APP_ORIGIN` (CORS) + redeploy, Supabase Auth Site URL + redirect allowlist, Stripe checkout success/cancel URLs.
+- [ ] **[Code]** Once entity name + contact email are known, fill the `legal.html` placeholders.
+
+---
+
 ## 0. Before flipping anything — exercise the refund path (TEST mode)
 The one flow never run against a real charge. Do it in **test** mode first.
 - [ ] **[Ella+Code]** As `paygtest`, unlock a fix ($4.99 test charge) → 👎 → **Request a review**. Confirm the promise reads **"verified fix or a full refund"** (refundable wording).
