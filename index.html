@@ -1623,7 +1623,8 @@ async function renderConsultant() {
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
         <div><div class="card-title" style="margin-bottom:2px">Consultant</div>
-          <div style="font-size:12px;color:var(--text-3)">Tier <b style="color:var(--text-2)">${escHtml(consultantProfile.tier)}</b> · Modules: ${escHtml((consultantProfile.modules || []).join(', ') || '—')}</div></div>
+          <div style="font-size:12px;color:var(--text-3)">Tier <b style="color:var(--text-2)">${escHtml(consultantProfile.tier)}</b> · Modules: ${escHtml((consultantProfile.modules || []).join(', ') || '—')}
+            <button class="btn btn-ghost" id="editModulesBtn" style="font-size:10px;padding:2px 7px;margin-left:6px">✏️ Edit modules</button></div></div>
         <div style="text-align:right"><div style="font-size:11px;color:var(--text-3)">Credit balance</div><div style="font-size:18px;font-weight:700;color:var(--success)">$${bal}</div></div>
       </div>
     </div>
@@ -1658,6 +1659,36 @@ function renderConsultantApply(el) {
   });
 }
 
+// Approved consultants can add/remove modules any time (keeps approval).
+function editConsultantModules() {
+  const el = document.getElementById('tab-consultant');
+  const modules = [...new Set(catalog.map(r => r.COMPONENT_NAME).filter(Boolean))].sort();
+  const current = new Set(consultantProfile.modules || []);
+  el.innerHTML = `
+    <div class="card">
+      <div class="card-title">Edit your modules</div>
+      <div style="font-size:12px;color:var(--text-3);margin-bottom:12px">Add or remove the modules you handle — changes take effect right away, and you'll start seeing jobs in any modules you add.</div>
+      <div class="field"><label>Your modules</label>
+        <select id="editModules" multiple size="10" style="width:100%;background:var(--surface-2);border:1px solid var(--border-strong);border-radius:8px;padding:8px;font-size:13px;color:var(--text)">
+          ${modules.map(m => `<option value="${escHtml(m)}" ${current.has(m) ? 'selected' : ''}>${escHtml(m)}</option>`).join('')}
+        </select>
+        <div style="font-size:11px;color:var(--text-3);margin-top:4px">Hold Ctrl/Cmd to select multiple. Your currently-selected modules are highlighted.</div></div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-primary" id="saveModulesBtn">Save</button>
+        <button class="btn btn-ghost" id="cancelModulesBtn">Cancel</button></div>
+      <div id="editModErr" style="font-size:11px;color:var(--danger);margin-top:8px"></div>
+    </div>`;
+  document.getElementById('cancelModulesBtn').addEventListener('click', renderConsultant);
+  document.getElementById('saveModulesBtn').addEventListener('click', async (e) => {
+    const sel = Array.from(document.getElementById('editModules').selectedOptions).map(o => o.value);
+    if (!sel.length) { document.getElementById('editModErr').textContent = 'Pick at least one module.'; return; }
+    e.currentTarget.disabled = true; e.currentTarget.textContent = 'Saving…';
+    const { error } = await sb.rpc('apply_as_consultant', { p_modules: sel });
+    if (error) { document.getElementById('editModErr').textContent = error.message; e.currentTarget.disabled = false; e.currentTarget.textContent = 'Save'; return; }
+    await loadConsultantProfile(); renderConsultant();
+  });
+}
+
 function consultantOpenJobCard(j) {
   return `<div style="border-bottom:1px solid var(--border);padding:12px 0">
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:3px">
@@ -1681,6 +1712,8 @@ function consultantMyJobCard(j) {
 }
 
 function wireConsultantActions(el) {
+  const emb = el.querySelector('#editModulesBtn');
+  if (emb) emb.addEventListener('click', editConsultantModules);
   el.querySelectorAll('[data-accept]').forEach(b => b.addEventListener('click', async () => {
     b.disabled = true; b.textContent = 'Accepting…';
     const { error } = await sb.rpc('accept_job', { p_job_id: b.dataset.accept });
