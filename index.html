@@ -371,6 +371,9 @@
     <button class="nav-item" data-tab="chatbot">
       <span class="nav-icon">💬</span> Ask a question
     </button>
+    <button class="nav-item" data-tab="myfixes">
+      <span class="nav-icon">💾</span> My fixes
+    </button>
 
     <div class="nav-section-label">Admin &amp; data</div>
     <button class="nav-item" data-tab="archive">
@@ -394,6 +397,7 @@
     <div id="tab-search" style="display:none"></div>
     <div id="tab-browse" style="display:none"></div>
     <div id="tab-chatbot" style="display:none"></div>
+    <div id="tab-myfixes" style="display:none"></div>
     <div id="tab-archive" style="display:none"></div>
     <div id="tab-library" style="display:none"></div>
     <div id="tab-escalations" style="display:none"></div>
@@ -718,12 +722,13 @@ document.querySelectorAll('.nav-item').forEach(btn => {
     document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     const tab = btn.dataset.tab;
-    ['troubleshoot', 'search', 'browse', 'chatbot', 'archive', 'library', 'escalations', 'catalog'].forEach(t => {
+    ['troubleshoot', 'search', 'browse', 'chatbot', 'myfixes', 'archive', 'library', 'escalations', 'catalog'].forEach(t => {
       document.getElementById('tab-' + t).style.display = t === tab ? '' : 'none';
     });
     if (tab === 'search') renderSearch();
     if (tab === 'browse') renderBrowse();
     if (tab === 'chatbot') renderChatbot();
+    if (tab === 'myfixes') renderMyFixes();
     if (tab === 'archive') renderArchive();
     if (tab === 'library') renderLibrary();
     if (tab === 'escalations') renderEscalations();
@@ -1475,6 +1480,63 @@ async function resolveEscalation(resolutionId, refunded) {
   if (error) { alert(error.message || 'Could not update escalation'); return; }
   await renderEscalations();
   refreshEscalationBadge();
+}
+
+// ── MY FIXES (durable re-access to unlocked resolutions) ───────
+async function renderMyFixes() {
+  const el = document.getElementById('tab-myfixes');
+  el.innerHTML = `<div class="card"><div class="empty"><span class="spin"></span> Loading your fixes…</div></div>`;
+  const { data, error } = await sb.rpc('my_resolutions');
+  if (error) { el.innerHTML = `<div class="card"><div class="empty">Couldn't load your fixes: ${escHtml(error.message || '')}</div></div>`; return; }
+  const rows = (data || []).filter(r => Array.isArray(r.steps) && r.steps.length);
+  if (!rows.length) {
+    el.innerHTML = `<div class="card"><div class="empty"><div class="empty-icon">💾</div>No unlocked fixes yet. Fixes you view or purchase will appear here so you can re-open them anytime — no re-charge.</div></div>`;
+    return;
+  }
+  el.innerHTML = `
+    <div class="card">
+      <div class="card-title" style="margin-bottom:2px">My fixes</div>
+      <div style="font-size:12px;color:var(--text-3);margin-bottom:12px">Fixes you've unlocked. Re-open any of them here anytime — you won't be charged again, and you'll see exactly the steps you were originally given.</div>
+      ${rows.map(myFixCard).join('')}
+    </div>`;
+  el.querySelectorAll('[data-fix-toggle]').forEach(b => b.addEventListener('click', () => {
+    const box = document.getElementById('fixSteps_' + b.dataset.fixToggle);
+    if (!box) return;
+    const open = box.style.display !== 'none';
+    box.style.display = open ? 'none' : 'block';
+    b.textContent = open ? 'View steps ▾' : 'Hide steps ▴';
+  }));
+  el.querySelectorAll('[data-fix-dl]').forEach(b => b.addEventListener('click', () => {
+    const r = rows.find(x => x.id === b.dataset.fixDl);
+    if (r) downloadSteps(r.solution_title || r.error_code || 'ifs-fix', r.who_acts || '—', r.steps || []);
+  }));
+}
+
+function myFixCard(r) {
+  const title = r.solution_title || r.error_text || r.error_code || 'Fix';
+  const dateStr = new Date(r.created_at).toLocaleDateString();
+  const paid = (r.price_cents || 0) > 0 ? `💳 Paid $${(r.price_cents / 100).toFixed(2)}` : '✓ Included (subscription)';
+  return `
+    <div style="border-bottom:1px solid var(--border);padding:12px 0">
+      <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center">
+        <div style="font-size:13px;font-weight:600">${escHtml(title)}</div>
+        <span style="font-size:11px;color:var(--text-3)">${escHtml(dateStr)}</span>
+      </div>
+      <div style="font-size:11px;color:var(--text-3);display:flex;gap:12px;flex-wrap:wrap;margin-top:3px">
+        <span class="lib-code">${escHtml(r.error_code || '—')}</span>
+        <span>${paid}${r.state === 'refunded' ? ' · ↩ refunded' : ''}</span>
+      </div>
+      <div class="btn-row" style="margin-top:8px">
+        <button class="btn btn-ghost" style="font-size:12px;padding:4px 9px" data-fix-toggle="${r.id}">View steps ▾</button>
+        <button class="btn btn-ghost" style="font-size:12px;padding:4px 9px" data-fix-dl="${r.id}">⬇ Download</button>
+      </div>
+      <div id="fixSteps_${r.id}" style="display:none;margin-top:8px">
+        <div class="solution-sub" style="margin-bottom:6px">👤 ${escHtml(r.who_acts || '—')}</div>
+        <ul class="step-list">
+          ${(r.steps || []).map((s, i) => `<li class="step-row"><span class="step-num">${i + 1}.</span><span class="step-text">${escHtml(s)}</span></li>`).join('')}
+        </ul>
+      </div>
+    </div>`;
 }
 
 // No plan at all (only reachable from Search/Browse, which everyone can open).
