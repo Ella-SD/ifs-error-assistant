@@ -1197,8 +1197,13 @@ function renderVerification(match) {
 // the $4.99 preview→pay gate (PAYG). Steps are always fetched from the server —
 // reveal_solution (subscribers) or /api/billing/unlock (PAYG) — never read from
 // the client. Post-reveal thumbs feed record_outcome (accept / refund signal).
-async function openResolution(sol, ctx, container) {
+// opts.payMode: 'direct' → a PAYG user charges immediately (used by Search/Browse,
+// where the card already served as the priced preview, so the extra paywall panel
+// would just be a second identical click). Default shows the paywall panel first
+// (used by Troubleshoot, where this IS the first preview of the match).
+async function openResolution(sol, ctx, container, opts) {
   if (!container) return;
+  opts = opts || {};
   container.innerHTML = `<div style="font-size:12px;color:var(--text-3)"><span class="spin"></span> Checking your access…</div>`;
   let resolutionId;
   try {
@@ -1220,7 +1225,8 @@ async function openResolution(sol, ctx, container) {
   if (hasActiveSub || isPlatformAdmin) {
     await revealFree(resolutionId, sol, container);
   } else if (paygReady) {
-    renderPaywall(resolutionId, sol, container);
+    if (opts.payMode === 'direct') chargeAndReveal(resolutionId, sol, container);
+    else renderPaywall(resolutionId, sol, container);
   } else {
     renderNeedPlan(container);
   }
@@ -1254,16 +1260,14 @@ function renderPaywall(resolutionId, sol, container) {
       <div id="unlockErr_${resolutionId}" style="font-size:11px;color:var(--danger);margin-top:8px"></div>
     </div>`;
   document.getElementById('unlockBtn_' + resolutionId)
-    .addEventListener('click', (e) => doUnlock(resolutionId, sol, container, e.currentTarget));
+    .addEventListener('click', () => chargeAndReveal(resolutionId, sol, container));
 }
 
 // Charge the saved card once and reveal. The endpoint is idempotent per
-// resolution, so a retried click never double-charges.
-async function doUnlock(resolutionId, sol, container, btn) {
-  const errEl = document.getElementById('unlockErr_' + resolutionId);
-  if (errEl) errEl.textContent = '';
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spin"></span> Charging…';
+// resolution, so a retried click never double-charges. On failure we fall back to
+// the paywall panel (with a retry button) and surface the error there.
+async function chargeAndReveal(resolutionId, sol, container) {
+  container.innerHTML = `<div style="font-size:12px;color:var(--text-3);padding:6px 0"><span class="spin"></span> Charging ${priceStr()}…</div>`;
   try {
     const resp = await fetch(`${BILLING_BASE}/unlock`, {
       method: 'POST', headers: await authedHeaders(),
@@ -1273,8 +1277,8 @@ async function doUnlock(resolutionId, sol, container, btn) {
     if (!resp.ok) throw new Error((data.error && data.error.message) || 'Unlock failed');
     renderRevealedSteps(container, data, resolutionId, sol);
   } catch (e) {
-    btn.disabled = false;
-    btn.innerHTML = `🔓 Unlock the fix for ${priceStr()}`;
+    renderPaywall(resolutionId, sol, container);
+    const errEl = document.getElementById('unlockErr_' + resolutionId);
     if (errEl) errEl.textContent = e.message || 'Unlock failed';
   }
 }
@@ -1932,7 +1936,7 @@ function runSearch() {
       const l = library.find(x => x.id === btn.dataset.reveal);
       if (!l) return;
       openResolution(l, { error_code: l.error_code, error_text: l.error_template || qRaw, confidence: 'high' },
-        document.getElementById('revealArea_' + l.id));
+        document.getElementById('revealArea_' + l.id), { payMode: 'direct' });
     });
   });
 
@@ -2067,7 +2071,7 @@ function renderBrowseCategory(el, category) {
       const l = library.find(x => x.id === btn.dataset.reveal);
       if (!l) return;
       openResolution(l, { error_code: l.error_code, error_text: l.error_template || null, confidence: 'high' },
-        document.getElementById('revealArea_' + l.id));
+        document.getElementById('revealArea_' + l.id), { payMode: 'direct' });
     });
   });
 
@@ -2387,7 +2391,7 @@ const startCheckout   = (tier, btn) => billingRedirect('checkout', { tier }, btn
 const startPaygSetup  = (btn) => billingRedirect('setup-payg', {}, btn);
 const openBillingPortal = (btn) => billingRedirect('portal', {}, btn);
 
-// (PAYG is now charged at unlock time via /api/billing/unlock — see doUnlock —
+// (PAYG is now charged at unlock time via /api/billing/unlock — see chargeAndReveal —
 // not on a post-hoc "was this helpful?" click. The old charge-resolution path
 // was removed in the paid-resolution rework.)
 
