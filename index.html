@@ -1378,6 +1378,36 @@ async function recordResolutionOutcome(resolutionId, up, btn) {
 // gate (subscribers/admin free, PAYG pays assemble_price) instead of showing the
 // steps for free. opts.ctx carries the resolution context. Without opts.gated
 // (admin library-seeding path) the assembled steps render inline as before.
+// Tolerant parse of the model's assembled answer: try the JSON object, and if
+// that's truncated/malformed (common after web search eats the token budget),
+// recover the "steps" array directly. Returns null if nothing usable is found.
+function parseAssembled(text) {
+  const raw = (text || '').replace(/```json|```/g, '').trim();
+  const open = raw.lastIndexOf('{'), close = raw.lastIndexOf('}');
+  if (open !== -1 && close > open) {
+    try { return JSON.parse(raw.slice(open, close + 1)); } catch {}
+  }
+  const m = raw.match(/"steps"\s*:\s*\[([\s\S]*?)\]/);
+  if (m) {
+    try {
+      const steps = JSON.parse('[' + m[1] + ']');
+      const t = raw.match(/"title"\s*:\s*"([^"]*)"/);
+      const w = raw.match(/"who_acts"\s*:\s*"([^"]*)"/);
+      return { title: t && t[1], who_acts: w && w[1], steps, sources: [] };
+    } catch {}
+  }
+  return null;
+}
+
+// Honest "we couldn't assemble a confident fix" state — no solution, no charge.
+function renderAssembleHolding(targetEl) {
+  targetEl.innerHTML = `
+    <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:12px">
+      <div style="font-size:13px;color:var(--text-2);margin-bottom:4px">🤔 No confident fix yet</div>
+      <div style="font-size:12px;color:var(--text-3)">We couldn't put together a reliable step-by-step fix for this exact error right now — so you haven't been charged. Try again in a moment, or ask the assistant for general guidance.</div>
+    </div>`;
+}
+
 async function generateAssembledAnswer(catalogRow, btn, targetEl, opts) {
   opts = opts || {};
   const originalLabel = btn.innerHTML;
@@ -1391,11 +1421,11 @@ async function generateAssembledAnswer(catalogRow, btn, targetEl, opts) {
       headers: await authedHeaders(),
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
-        max_tokens: 1500,
+        max_tokens: 4000,   // headroom so the final JSON isn't truncated after web search
         tools: [{ type: 'web_search_20250305', name: 'web_search' }],
         system: `You are an IFS ERP support specialist assembling a first-response fix for a specific error, for an end user who is not a developer and does not have database access.
 
-Use web search to check IFS documentation (docs.ifs.com), the IFS community forum (community.ifs.com), and any other reputable sources for how end users typically resolve this specific error.
+Use web search to check IFS documentation (docs.ifs.com), the IFS community forum (community.ifs.com), and any other reputable sources for how end users typically resolve THIS specific error. Stay strictly on the exact error text given — do not answer a different or more common error. If you cannot find a reasonably specific way an end user resolves this exact error, return an empty "steps" array rather than inventing a generic or unrelated fix.
 
 Write the fix IN YOUR OWN WORDS — do not quote sources verbatim. Steps should be actions a business user can take inside the IFS application (which screen to go to, what to change, who to contact if it needs an admin). If you are not confident in a specific fix, say so plainly in a step rather than guessing.
 
@@ -1428,15 +1458,16 @@ Research and assemble a step-by-step fix for this error.`
     if (data.error) throw new Error(data.error.message);
 
     const textBlocks = (data.content || []).filter(b => b.type === 'text').map(b => b.text);
-    let raw = textBlocks.join('\n').replace(/```json|```/g, '').trim();
-    const lastOpen = raw.lastIndexOf('{');
-    const lastClose = raw.lastIndexOf('}');
-    if (lastOpen === -1 || lastClose === -1 || lastClose < lastOpen) {
-      throw new Error('Could not parse an assembled answer from the response.');
+    const parsed = parseAssembled(textBlocks.join('\n'));
+    const normalizedSteps = parsed ? normalizeStepList(parsed.steps) : [];
+    // Honest holding state (scope Part 5.3): if the model couldn't produce a
+    // confident fix — or its JSON came back unparseable/truncated — don't invent
+    // one, don't create a solution, and (importantly) don't charge. Show a plain
+    // "no confident fix" message instead of a dead-end error.
+    if (normalizedSteps.length === 0) {
+      renderAssembleHolding(targetEl, opts);
+      return;
     }
-    const parsed = JSON.parse(raw.slice(lastOpen, lastClose + 1));
-    const normalizedSteps = normalizeStepList(parsed.steps);
-    if (normalizedSteps.length === 0) throw new Error('No steps were generated.');
 
     // Save as a new AI-assembled draft pending admin review, owned by this user.
     // Under the shared model we always insert a fresh pending row rather than
