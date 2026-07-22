@@ -1008,6 +1008,21 @@ Which candidate best matches the extracted error?`
   }
 }
 
+// Plain-language match-confidence label (scope Part 5.5) — a paying user acts on
+// "likely / possible" more easily than "high/medium confidence" or a percentage.
+function confidenceLabel(conf) {
+  return { high: 'Likely match', medium: 'Possible match', low: 'Low-confidence match' }[conf] || 'Catalog match';
+}
+
+// Version-mismatch banner (scope Part 3/8.6): IFS error text is a fixed Oracle
+// string, so a weak/no match is usually a version mismatch, not a wording problem.
+// Surface it explicitly when a non-IFS-10 version was detected on screen, rather
+// than folding it silently into a generic "no match".
+function versionMismatchBanner(hint) {
+  if (!hint || /10\b/.test(hint)) return '';
+  return `<div style="background:var(--warning-dim);border:1px solid var(--warning);border-radius:8px;padding:10px 12px;margin-bottom:10px;font-size:12px;color:var(--warning)">⚠️ This looks like <b>${escHtml(hint)}</b>, but our catalog currently covers <b>IFS 10</b> only — that mismatch is the most likely reason for a weak or missing match, not necessarily a wrong error.</div>`;
+}
+
 function renderResult(extracted, catalogMatch, libMatch, debugInfo) {
   const resultArea = document.getElementById('resultArea');
   const debugHtml = debugInfo ? `<div style="font-family:var(--mono);font-size:11px;color:var(--text-3);background:var(--surface-2);border-radius:6px;padding:8px;margin-bottom:12px;white-space:pre">${escHtml(debugInfo)}</div>` : '';
@@ -1047,7 +1062,7 @@ function renderResult(extracted, catalogMatch, libMatch, debugInfo) {
   if (catalogMatch && (catalogMatch.confidence === 'high' || catalogMatch.confidence === 'medium')) {
     resultArea.innerHTML = `
       <div class="card">
-        <span class="match-badge ${catalogMatch.confidence}">⚡ Catalog match — ${catalogMatch.confidence} confidence</span>
+        <span class="match-badge ${catalogMatch.confidence}">⚡ ${confidenceLabel(catalogMatch.confidence)}</span>
         ${extractedHtml}
         ${renderVerification(catalogMatch)}
         <div style="margin-top:12px;font-size:13px;color:var(--warning)">
@@ -1072,6 +1087,7 @@ function renderResult(extracted, catalogMatch, libMatch, debugInfo) {
     resultArea.innerHTML = `
       <div class="card">
         <span class="match-badge low">❓ Possible match — low confidence, please verify</span>
+        ${versionMismatchBanner(extracted.ifs_version_hint)}
         ${extractedHtml}
         ${renderVerification(catalogMatch)}
         <div style="margin-top:12px;font-size:13px;color:var(--text-3)">
@@ -1097,6 +1113,7 @@ function renderResult(extracted, catalogMatch, libMatch, debugInfo) {
   resultArea.innerHTML = `
     <div class="card">
       <span class="match-badge none">✗ No match found</span>
+      ${versionMismatchBanner(extracted.ifs_version_hint)}
       ${extractedHtml}
       <div class="no-match-box">
         <div class="no-match-icon">🔎</div>
