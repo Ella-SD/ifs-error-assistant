@@ -45,6 +45,7 @@ Card capture is Stripe-hosted (no client key), so this is dashboard + env-var wo
 - [ ] **[Code]** Flip the admin escalation Stripe dashboard link from `/test/payments/` to `/payments/` (index.html) and push.
 - [ ] **[Code]** Redeploy the proxy (`vercel --prod`) so the new env vars take effect. *(needs go-ahead)*
 - [ ] **[Verify]** One real subscription checkout (small, refundable) + one real $4.99 PAYG charge on the live site → confirm access is granted and the webhook lands.
+- [ ] **[Verify]** (minor) Stripe API version: `stripe-webhook.js` reads `sub.current_period_end` at the subscription top level; on newer API versions it moved to the subscription item. Cosmetic (access uses `subscription_status`, not period end) — just confirm it populates or accept null. Also: `checkout.js` `success_url`/`cancel_url` use `APP_URL` — update it if the app moves to a custom domain (see Prerequisite).
 
 ## 4. Escalation queue staffing
 - [x] **[Ella]** Confirmed — covered directly, plus a couple of hired IFS professionals. (The "a specialist will review" promise is real.)
