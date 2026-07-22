@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Terms & Privacy — IFS Error Assistant</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin:0; background:#14151f; color:#e8eaf6; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; line-height:1.6; }
+  .wrap { max-width:760px; margin:0 auto; padding:40px 22px 80px; }
+  h1 { font-size:24px; margin:0 0 4px; }
+  h2 { font-size:18px; margin:34px 0 8px; border-top:1px solid #2e3148; padding-top:22px; }
+  h3 { font-size:14px; margin:18px 0 4px; color:#c5c9e6; }
+  p, li { font-size:14px; color:#c5c9e6; }
+  a { color:#8a7cff; }
+  .muted { color:#8b90b8; font-size:12px; }
+  .note { background:#1c1e2c; border:1px solid #3d4166; border-radius:8px; padding:12px 14px; font-size:13px; margin:16px 0; }
+  .back { display:inline-block; margin-bottom:20px; font-size:13px; }
+  code { background:#1c1e2c; padding:1px 5px; border-radius:4px; font-size:12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="./index.html">← Back to the app</a>
+  <h1>Terms of Service &amp; Privacy Policy</h1>
+  <div class="muted">IFS Error Assistant · Last updated 2026-07-22</div>
+
+  <div class="note">
+    ⚠️ <b>Draft for the pilot.</b> This is a plain-language starting version prepared for the initial pilot and is <b>not legal advice</b>. It should be reviewed and finalized by qualified counsel before any public launch. Bracketed items like <code>[Provider]</code> are placeholders to complete.
+  </div>
+
+  <h2>1. About this service</h2>
+  <p>IFS Error Assistant ("the Service", "we", "us") helps business users of IFS ERP understand and resolve error messages by matching them against a catalog of known errors and providing step-by-step guidance. The Service is operated by <code>[Legal entity name]</code>. Contact: <code>[contact email]</code>.</p>
+  <p><b>We are not affiliated with, endorsed by, or connected to IFS AB or its products.</b> "IFS" and related names are trademarks of their respective owners and are used only to describe compatibility.</p>
+
+  <h2>2. Guidance only — not a warranty</h2>
+  <p>The fixes and instructions provided are <b>informational guidance</b>, not professional, legal, or financial advice, and come with <b>no guarantee</b> that they will resolve your issue. Some content is generated or assembled by AI and clearly labelled as not yet human-verified. Because IFS errors can involve live financial and operational data, <b>you are responsible for reviewing any instruction and confirming it is appropriate for your environment before acting on it</b>, and for maintaining your own backups and change controls.</p>
+
+  <h2>3. Accounts</h2>
+  <p>You must provide accurate information, keep your credentials secure, and are responsible for activity under your account. You must be authorized to act on behalf of the company you register. You must be of legal age to enter a contract.</p>
+
+  <h2>4. Plans, pricing &amp; billing</h2>
+  <ul>
+    <li><b>Personal</b> — $49/month, unlimited resolutions for one user.</li>
+    <li><b>Company</b> — $299/month, unlimited resolutions for everyone at your company.</li>
+    <li><b>Pay-as-you-go</b> — $4.99 per resolution unlocked (including AI-assembled fixes), charged only when you choose to unlock the steps.</li>
+  </ul>
+  <p>Payments are processed by <b>Stripe</b>; we do not store your full card details. Subscriptions renew automatically until cancelled and can be managed from your billing page. Prices may change on notice; changes do not affect the current paid period.</p>
+
+  <h2>5. Refunds</h2>
+  <p>If a fix you paid for does not resolve your issue, mark it "No" (thumbs-down) to request a review. A specialist will review it and you will receive <b>either a verified fix or a full refund</b> of that resolution. Refunds apply to pay-as-you-go charges (subscribers already have unlimited access). Refunds are issued to your original payment method. This is a good-faith, one-time-per-resolution process intended to be simple and low-friction.</p>
+
+  <h2>6. Acceptable use</h2>
+  <p>Do not misuse the Service: no unlawful use, no attempts to break access controls or extract other companies' data, no automated scraping of the solution content, no reselling or redistributing the fixes, and no submitting content you are not permitted to share.</p>
+
+  <h2>7. Content</h2>
+  <p>Solutions in the shared library are provided to help all users; you receive a licence to use them for your own company's operations, not to redistribute them. Where you contribute content, you grant us a licence to store, review, and share it within the Service.</p>
+
+  <h2>8. Availability, disclaimer &amp; liability</h2>
+  <p>The Service is provided "as is" and "as available", without warranties of any kind. To the maximum extent permitted by law, our total liability for any claim arising from the Service is limited to the amount you paid us in the three months before the claim. We are not liable for indirect, incidental, or consequential damages, including data loss or business interruption resulting from acting on guidance provided.</p>
+
+  <h2>9. Suspension &amp; termination</h2>
+  <p>You may stop using the Service and cancel at any time. We may suspend or terminate accounts that breach these terms. On termination, your right to use the Service ends; provisions that by their nature should survive (e.g. liability limits) survive.</p>
+
+  <h2>10. Changes</h2>
+  <p>We may update these terms; material changes will be communicated through the Service. Continued use after an update means you accept the revised terms.</p>
+
+  <hr style="border:none;border-top:1px solid #2e3148;margin:40px 0 0">
+
+  <h2>Privacy Policy</h2>
+  <p>This section explains what data we handle and why. A short, more detailed technical description also lives in our internal data-flow documentation.</p>
+
+  <h3>What we collect</h3>
+  <ul>
+    <li><b>Account data</b> — your email, company, and role.</li>
+    <li><b>Error data you submit</b> — the extracted <i>text</i> of error messages, the screen name, an optional version hint, and any context you type. Screenshots are processed to read the error text but <b>are not stored</b> by us.</li>
+    <li><b>Usage &amp; resolution records</b> — which solution was shown, whether it was marked helpful, and (for paid resolutions) the amount and payment reference.</li>
+    <li><b>Billing data</b> — handled by Stripe; we store only your customer/subscription status, not card numbers.</li>
+  </ul>
+
+  <h3>How error data is protected</h3>
+  <p>Your submitted error text and resolution records are <b>private to your company</b> and enforced at the database level — other companies cannot read them. Screenshots are transient: they are sent for text extraction and not retained.</p>
+
+  <h3>Service providers we use</h3>
+  <ul>
+    <li><b>Supabase</b> — database, authentication, and hosting of your account and error data.</li>
+    <li><b>Vercel</b> — hosts the server functions that broker AI and billing requests (it does not persist your requests).</li>
+    <li><b>Anthropic</b> — reads the error text from screenshots and helps assemble guidance. Screenshots and text pass through its API transiently for processing; per Anthropic's terms, API inputs are not used to train its models by default.</li>
+    <li><b>Stripe</b> — payment processing.</li>
+    <li><b>[Email/SMTP provider]</b> — sends account emails (sign-up confirmation, etc.).</li>
+  </ul>
+
+  <h3>Retention</h3>
+  <p>Account and error/resolution records are retained while your account is active, and your company can clear its error archive at any time. Screenshots are not retained. Billing records are retained as required for accounting and tax.</p>
+
+  <h3>Your choices</h3>
+  <p>You can request access to, correction of, or deletion of your personal data by contacting <code>[contact email]</code>. Deleting your account removes your associated personal records, subject to records we must keep for legal or accounting reasons.</p>
+
+  <h3>International users</h3>
+  <p>If you access the Service from outside the operator's country, your data may be processed in other regions by the providers above. A full data-protection statement (including GDPR-specific rights and legal bases) will be provided before any marketing to international users.</p>
+
+  <h3>Cookies &amp; local storage</h3>
+  <p>We use only what's necessary to keep you signed in (an authentication session in your browser's storage). We do not use advertising or cross-site tracking cookies.</p>
+
+  <h3>Contact</h3>
+  <p>Questions about privacy or these terms: <code>[contact email]</code>.</p>
+
+  <p class="muted" style="margin-top:30px">© 2026 <code>[Legal entity name]</code>. Draft — pending legal review.</p>
+</div>
+</body>
+</html>

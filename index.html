@@ -2688,6 +2688,9 @@ function renderAuthScreen(msg) {
           ? `Already have an account? <a id="authSwitch">Sign in</a>`
           : `New here? <a id="authSwitch">Create an account</a>`}
       </div>
+      <div style="margin-top:14px;font-size:11px;color:var(--text-3);text-align:center">
+        By continuing you agree to our <a href="legal.html" target="_blank" rel="noopener" style="color:var(--accent)">Terms &amp; Privacy Policy</a>.
+      </div>
     </div>`;
   if (msg) showAuthMsg(msg.text, msg.type);
   document.getElementById('authSubmit').onclick = isSignup ? handleSignup : handleLogin;
