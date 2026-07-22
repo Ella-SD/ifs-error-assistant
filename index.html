@@ -374,6 +374,9 @@
     <button class="nav-item" data-tab="myfixes">
       <span class="nav-icon">💾</span> My fixes
     </button>
+    <button class="nav-item" data-tab="consultant">
+      <span class="nav-icon">💼</span> Consultant
+    </button>
 
     <div class="nav-section-label">Admin &amp; data</div>
     <button class="nav-item" data-tab="archive">
@@ -387,6 +390,9 @@
       <span class="nav-icon">⚠️</span> Escalations
       <span class="nav-badge" id="escBadge" style="display:none">0</span>
     </button>
+    <button class="nav-item" data-tab="marketplace" id="navMarketplace" style="display:none">
+      <span class="nav-icon">🛠</span> Marketplace
+    </button>
     <button class="nav-item" data-tab="catalog">
       <span class="nav-icon">⚙️</span> Error catalog
     </button>
@@ -398,6 +404,8 @@
     <div id="tab-browse" style="display:none"></div>
     <div id="tab-chatbot" style="display:none"></div>
     <div id="tab-myfixes" style="display:none"></div>
+    <div id="tab-consultant" style="display:none"></div>
+    <div id="tab-marketplace" style="display:none"></div>
     <div id="tab-archive" style="display:none"></div>
     <div id="tab-library" style="display:none"></div>
     <div id="tab-escalations" style="display:none"></div>
@@ -722,13 +730,15 @@ document.querySelectorAll('.nav-item').forEach(btn => {
     document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     const tab = btn.dataset.tab;
-    ['troubleshoot', 'search', 'browse', 'chatbot', 'myfixes', 'archive', 'library', 'escalations', 'catalog'].forEach(t => {
+    ['troubleshoot', 'search', 'browse', 'chatbot', 'myfixes', 'consultant', 'marketplace', 'archive', 'library', 'escalations', 'catalog'].forEach(t => {
       document.getElementById('tab-' + t).style.display = t === tab ? '' : 'none';
     });
     if (tab === 'search') renderSearch();
     if (tab === 'browse') renderBrowse();
     if (tab === 'chatbot') renderChatbot();
     if (tab === 'myfixes') renderMyFixes();
+    if (tab === 'consultant') renderConsultant();
+    if (tab === 'marketplace') renderMarketplaceAdmin();
     if (tab === 'archive') renderArchive();
     if (tab === 'library') renderLibrary();
     if (tab === 'escalations') renderEscalations();
@@ -1537,6 +1547,231 @@ function myFixCard(r) {
         </ul>
       </div>
     </div>`;
+}
+
+// ── MARKETPLACE (consultant + admin + notifications) ───────────
+let consultantProfile = null;
+let notifs = [];
+
+async function loadConsultantProfile() {
+  if (!authUser) { consultantProfile = null; return; }
+  const { data } = await sb.from('consultant_profiles').select('*').eq('user_id', authUser.id).maybeSingle();
+  consultantProfile = data || null;
+}
+async function loadNotifications() {
+  if (!authUser) { notifs = []; return; }
+  const { data } = await sb.from('notifications').select('*').order('created_at', { ascending: false }).limit(40);
+  notifs = data || [];
+}
+
+// Notifications bell (rendered into the user bar).
+function renderNotifBell() {
+  const bar = document.getElementById('authUserBar');
+  if (!bar) return;
+  let bell = document.getElementById('notifBell');
+  if (!bell) {
+    bell = document.createElement('span');
+    bell.id = 'notifBell';
+    bell.style.cssText = 'position:relative;cursor:pointer;font-size:15px;margin-right:4px';
+    bar.insertBefore(bell, bar.firstChild);
+  }
+  const unread = notifs.filter(n => !n.read_at).length;
+  bell.innerHTML = `🔔${unread ? `<span style="position:absolute;top:-7px;right:-9px;background:var(--danger);color:#fff;border-radius:999px;font-size:9px;padding:0 4px">${unread}</span>` : ''}`;
+  bell.onclick = toggleNotifPanel;
+}
+
+function toggleNotifPanel() {
+  const existing = document.getElementById('notifPanel');
+  if (existing) { existing.remove(); return; }
+  const panel = document.createElement('div');
+  panel.id = 'notifPanel';
+  panel.style.cssText = 'position:fixed;top:52px;right:14px;width:320px;max-height:60vh;overflow-y:auto;background:var(--surface);border:1px solid var(--border-strong);border-radius:10px;box-shadow:0 8px 30px rgba(0,0,0,.45);z-index:1000;padding:6px';
+  panel.innerHTML = notifs.length ? notifs.map(n => `
+    <div style="padding:8px;border-bottom:1px solid var(--border);${n.read_at ? '' : 'background:var(--surface-2)'}">
+      <div style="font-size:12px;font-weight:600">${escHtml(n.title)}</div>
+      <div style="font-size:11px;color:var(--text-3)">${escHtml(n.body || '')}</div>
+    </div>`).join('') : '<div style="padding:16px;text-align:center;color:var(--text-3);font-size:12px">No notifications</div>';
+  document.body.appendChild(panel);
+  const unreadIds = notifs.filter(n => !n.read_at).map(n => n.id);
+  if (unreadIds.length) {
+    sb.rpc('mark_notifications_read', { p_ids: unreadIds }).then(() => {
+      const now = new Date().toISOString();
+      notifs.forEach(n => { if (unreadIds.includes(n.id)) n.read_at = now; });
+      renderNotifBell();
+    });
+  }
+}
+
+// ── Consultant tab (adapts: apply / pending / approved) ──
+async function renderConsultant() {
+  const el = document.getElementById('tab-consultant');
+  await loadConsultantProfile();
+  if (!consultantProfile) return renderConsultantApply(el);
+  if (consultantProfile.status === 'pending') {
+    el.innerHTML = `<div class="card"><div class="empty"><div class="empty-icon">⏳</div>Your consultant application is pending review — we'll notify you once you're approved.</div></div>`;
+    return;
+  }
+  if (consultantProfile.status === 'suspended') {
+    el.innerHTML = `<div class="card"><div class="empty"><div class="empty-icon">🚫</div>Your consultant access is suspended. Contact support.</div></div>`;
+    return;
+  }
+  el.innerHTML = `<div class="card"><div class="empty"><span class="spin"></span> Loading jobs…</div></div>`;
+  const [openR, mineR] = await Promise.all([sb.rpc('open_jobs_for_consultant'), sb.rpc('my_consultant_jobs')]);
+  const open = openR.data || [], mine = mineR.data || [];
+  const bal = ((consultantProfile.credit_balance_cents || 0) / 100).toFixed(2);
+  el.innerHTML = `
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+        <div><div class="card-title" style="margin-bottom:2px">Consultant</div>
+          <div style="font-size:12px;color:var(--text-3)">Tier <b style="color:var(--text-2)">${escHtml(consultantProfile.tier)}</b> · Modules: ${escHtml((consultantProfile.modules || []).join(', ') || '—')}</div></div>
+        <div style="text-align:right"><div style="font-size:11px;color:var(--text-3)">Credit balance</div><div style="font-size:18px;font-weight:700;color:var(--success)">$${bal}</div></div>
+      </div>
+    </div>
+    <div class="card"><div class="card-title" style="margin-bottom:8px">Open jobs (${open.length})</div>
+      ${open.length ? open.map(consultantOpenJobCard).join('') : '<div class="empty" style="padding:16px">No open jobs in your modules right now.</div>'}</div>
+    <div class="card"><div class="card-title" style="margin-bottom:8px">My jobs (${mine.length})</div>
+      ${mine.length ? mine.map(consultantMyJobCard).join('') : '<div class="empty" style="padding:16px">No jobs taken yet.</div>'}</div>`;
+  wireConsultantActions(el);
+}
+
+function renderConsultantApply(el) {
+  const modules = [...new Set(catalog.map(r => r.COMPONENT_NAME).filter(Boolean))].sort();
+  el.innerHTML = `
+    <div class="card">
+      <div class="card-title">Become a consultant</div>
+      <div style="font-size:12px;color:var(--text-3);margin-bottom:12px">Help other IFS users resolve errors in your areas of expertise and earn credit. Pick your modules and apply — an admin reviews new consultants before you can take jobs.</div>
+      <div class="field"><label>Your modules</label>
+        <select id="applyModules" multiple size="8" style="width:100%;background:var(--surface-2);border:1px solid var(--border-strong);border-radius:8px;padding:8px;font-size:13px;color:var(--text)">
+          ${modules.map(m => `<option value="${escHtml(m)}">${escHtml(m)}</option>`).join('')}
+        </select>
+        <div style="font-size:11px;color:var(--text-3);margin-top:4px">Hold Ctrl/Cmd to select multiple.</div></div>
+      <button class="btn btn-primary" id="applyConsultantBtn">Apply</button>
+      <div id="applyErr" style="font-size:11px;color:var(--danger);margin-top:8px"></div>
+    </div>`;
+  document.getElementById('applyConsultantBtn').addEventListener('click', async (e) => {
+    const sel = Array.from(document.getElementById('applyModules').selectedOptions).map(o => o.value);
+    if (!sel.length) { document.getElementById('applyErr').textContent = 'Pick at least one module.'; return; }
+    e.currentTarget.disabled = true; e.currentTarget.textContent = 'Applying…';
+    const { error } = await sb.rpc('apply_as_consultant', { p_modules: sel });
+    if (error) { document.getElementById('applyErr').textContent = error.message; e.currentTarget.disabled = false; e.currentTarget.textContent = 'Apply'; return; }
+    await loadConsultantProfile(); renderConsultant();
+  });
+}
+
+function consultantOpenJobCard(j) {
+  return `<div style="border-bottom:1px solid var(--border);padding:12px 0">
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:3px">
+      <span class="lib-code">${escHtml(j.error_code || '—')}</span><span style="font-size:11px;color:var(--text-3)">${escHtml(j.module || '')}</span></div>
+    <div style="font-size:12px;color:var(--text)">${escHtml(j.error_text || '')}</div>
+    ${j.activity ? `<div style="font-size:11px;color:var(--text-2);margin-top:4px">🗣️ ${escHtml(j.activity)}</div>` : ''}
+    <div class="btn-row" style="margin-top:8px">
+      <button class="btn btn-primary" style="font-size:12px" data-accept="${j.job_id}">✓ Accept — $${(j.base_price_cents / 100).toFixed(2)}</button></div>
+    <div id="jobMsg_${j.job_id}" style="font-size:11px;color:var(--danger);margin-top:4px"></div></div>`;
+}
+
+const JOB_LABELS = { open:'Open', claimed:'Claimed', price_proposed:'Price proposed — awaiting user', awaiting_payment:'Awaiting user payment', in_progress:'In progress', submitted:'Submitted for review', delivered:'Delivered ✓', rejected:'Rejected', refunded:'Refunded', reopened:'Reopened', expired:'Expired' };
+
+function consultantMyJobCard(j) {
+  return `<div style="border-bottom:1px solid var(--border);padding:12px 0">
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:3px">
+      <span class="lib-code">${escHtml(j.error_code || '—')}</span>
+      <span style="font-size:10px;font-weight:600;padding:2px 7px;border-radius:999px;background:var(--surface-2);color:var(--accent)">${JOB_LABELS[j.state] || j.state}</span></div>
+    <div style="font-size:12px;color:var(--text)">${escHtml(j.error_text || '')}</div>
+    ${j.state === 'in_progress' ? `<div id="submit_${j.job_id}" style="margin-top:8px"><button class="btn btn-primary" style="font-size:12px" data-submitform="${j.job_id}">Submit fix</button></div>` : ''}</div>`;
+}
+
+function wireConsultantActions(el) {
+  el.querySelectorAll('[data-accept]').forEach(b => b.addEventListener('click', async () => {
+    b.disabled = true; b.textContent = 'Accepting…';
+    const { error } = await sb.rpc('accept_job', { p_job_id: b.dataset.accept });
+    if (error) { document.getElementById('jobMsg_' + b.dataset.accept).textContent = error.message; b.disabled = false; return; }
+    renderConsultant();
+  }));
+  el.querySelectorAll('[data-submitform]').forEach(b => b.addEventListener('click', () => {
+    const id = b.dataset.submitform;
+    const box = document.getElementById('submit_' + id);
+    box.innerHTML = `
+      <input id="subTitle_${id}" placeholder="Short title for the fix" style="width:100%;box-sizing:border-box;background:var(--surface-2);border:1px solid var(--border-strong);border-radius:8px;padding:8px;font-size:12px;color:var(--text);margin-bottom:6px">
+      <input id="subWho_${id}" placeholder="Who acts (e.g. Buyer)" style="width:100%;box-sizing:border-box;background:var(--surface-2);border:1px solid var(--border-strong);border-radius:8px;padding:8px;font-size:12px;color:var(--text);margin-bottom:6px">
+      <textarea id="subSteps_${id}" rows="5" placeholder="Fix steps — one per line" style="width:100%;box-sizing:border-box;background:var(--surface-2);border:1px solid var(--border-strong);border-radius:8px;padding:8px;font-size:12px;color:var(--text);font-family:inherit"></textarea>
+      <button class="btn btn-primary" style="font-size:12px;margin-top:6px" data-dosubmit="${id}">Submit for review</button>
+      <div id="subErr_${id}" style="font-size:11px;color:var(--danger);margin-top:4px"></div>`;
+    box.querySelector('[data-dosubmit]').addEventListener('click', async (e) => {
+      const title = document.getElementById('subTitle_' + id).value.trim();
+      const who = document.getElementById('subWho_' + id).value.trim();
+      const steps = normalizeStepList(document.getElementById('subSteps_' + id).value.split('\n'));
+      if (!steps.length) { document.getElementById('subErr_' + id).textContent = 'Add at least one step.'; return; }
+      e.currentTarget.disabled = true; e.currentTarget.textContent = 'Submitting…';
+      const { error } = await sb.rpc('submit_job_fix', { p_job_id: id, p_title: title, p_who: who, p_steps: steps });
+      if (error) { document.getElementById('subErr_' + id).textContent = error.message; e.currentTarget.disabled = false; e.currentTarget.textContent = 'Submit for review'; return; }
+      renderConsultant();
+    });
+  }));
+}
+
+// ── Marketplace admin tab (approvals + job delivery) ──
+async function renderMarketplaceAdmin() {
+  const el = document.getElementById('tab-marketplace');
+  if (!isPlatformAdmin) { el.innerHTML = `<div class="card"><div class="empty"><div class="empty-icon">🔒</div>Admin only.</div></div>`; return; }
+  el.innerHTML = `<div class="card"><div class="empty"><span class="spin"></span> Loading…</div></div>`;
+  const [appsR, jobsR] = await Promise.all([sb.rpc('admin_consultant_applications'), sb.rpc('admin_jobs')]);
+  const apps = appsR.data || [], jobs = jobsR.data || [];
+  el.innerHTML = `
+    <div class="card"><div class="card-title" style="margin-bottom:8px">Consultant applications (${apps.length})</div>
+      ${apps.length ? apps.map(adminAppCard).join('') : '<div class="empty" style="padding:14px">No applications.</div>'}</div>
+    <div class="card"><div class="card-title" style="margin-bottom:8px">Jobs (${jobs.length})</div>
+      ${jobs.length ? jobs.map(adminJobCard).join('') : '<div class="empty" style="padding:14px">No jobs yet.</div>'}</div>`;
+  wireMarketplaceAdmin(el);
+}
+
+function adminAppCard(a) {
+  return `<div style="border-bottom:1px solid var(--border);padding:10px 0">
+    <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center">
+      <div><div style="font-size:13px;font-weight:600">${escHtml(a.email)}</div>
+        <div style="font-size:11px;color:var(--text-3)">Modules: ${escHtml((a.modules || []).join(', ') || '—')} · Tier ${escHtml(a.tier)} · <b style="color:var(--accent)">${escHtml(a.status)}</b> · Balance $${((a.credit_balance_cents || 0) / 100).toFixed(2)}</div></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+        <select data-tier="${a.user_id}" style="font-size:11px;background:var(--surface-2);border:1px solid var(--border-strong);border-radius:6px;color:var(--text);padding:2px">
+          ${['bronze','silver','gold'].map(t => `<option value="${t}" ${a.tier === t ? 'selected' : ''}>${t}</option>`).join('')}</select>
+        ${a.status !== 'approved' ? `<button class="btn btn-primary" style="font-size:11px;padding:4px 8px;background:var(--success)" data-appstatus="${a.user_id}" data-val="approved">Approve</button>` : ''}
+        ${a.status !== 'suspended' ? `<button class="btn btn-ghost" style="font-size:11px;padding:4px 8px" data-appstatus="${a.user_id}" data-val="suspended">Suspend</button>` : ''}
+      </div></div></div>`;
+}
+
+function adminJobCard(j) {
+  return `<div style="border-bottom:1px solid var(--border);padding:10px 0">
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:3px">
+      <span class="lib-code">${escHtml(j.error_code || '—')}</span>
+      <span style="font-size:10px;font-weight:600;padding:2px 7px;border-radius:999px;background:var(--surface-2);color:var(--accent)">${JOB_LABELS[j.state] || j.state}</span>
+      <span style="font-size:11px;color:var(--text-3)">${escHtml(j.module || '')}</span></div>
+    <div style="font-size:12px;color:var(--text)">${escHtml(j.error_text || '')}</div>
+    <div style="font-size:11px;color:var(--text-3);margin-top:2px">User: ${escHtml(j.user_email || '')}${j.consultant_email ? ` · Consultant: ${escHtml(j.consultant_email)}` : ''}${j.solution_title ? ` · Fix: ${escHtml(j.solution_title)}` : ''}</div>
+    ${j.state === 'submitted' ? `
+      <div class="btn-row" style="margin-top:8px">
+        <button class="btn btn-primary" style="font-size:11px;padding:4px 8px;background:var(--success)" data-deliver="${j.job_id}">Deliver to user</button>
+        <button class="btn-danger" style="font-size:11px;padding:4px 8px" data-closejob="${j.job_id}">Reject / refund</button></div>
+      <div style="font-size:11px;color:var(--text-3);margin-top:4px">Review the fix in the Solution library first (it's PENDING_REVIEW).</div>` : ''}
+    <div id="ajobMsg_${j.job_id}" style="font-size:11px;color:var(--danger);margin-top:4px"></div></div>`;
+}
+
+function wireMarketplaceAdmin(el) {
+  el.querySelectorAll('[data-appstatus]').forEach(b => b.addEventListener('click', async () => {
+    const tier = el.querySelector(`[data-tier="${b.dataset.appstatus}"]`)?.value || null;
+    const { error } = await sb.rpc('admin_set_consultant', { p_user: b.dataset.appstatus, p_status: b.dataset.val, p_tier: tier });
+    if (error) { alert(error.message); return; }
+    renderMarketplaceAdmin();
+  }));
+  el.querySelectorAll('[data-deliver]').forEach(b => b.addEventListener('click', async () => {
+    b.disabled = true; b.textContent = 'Delivering…';
+    const { error } = await sb.rpc('deliver_job', { p_job_id: b.dataset.deliver });
+    if (error) { document.getElementById('ajobMsg_' + b.dataset.deliver).textContent = error.message; b.disabled = false; b.textContent = 'Deliver to user'; return; }
+    renderMarketplaceAdmin();
+  }));
+  el.querySelectorAll('[data-closejob]').forEach(b => b.addEventListener('click', async () => {
+    const refunded = confirm('OK = refund the user (also issue the Stripe refund manually). Cancel = reject without refund.');
+    const { error } = await sb.rpc('admin_close_job', { p_job_id: b.dataset.closejob, p_refunded: refunded });
+    if (error) { document.getElementById('ajobMsg_' + b.dataset.closejob).textContent = error.message; return; }
+    renderMarketplaceAdmin();
+  }));
 }
 
 // No plan at all (only reachable from Search/Browse, which everyone can open).
@@ -2868,7 +3103,10 @@ function renderUserBar() {
   if (navLib) navLib.style.display = isPlatformAdmin ? '' : 'none';
   const navEsc = document.getElementById('navEscalations');
   if (navEsc) navEsc.style.display = isPlatformAdmin ? '' : 'none';
+  const navMkt = document.getElementById('navMarketplace');
+  if (navMkt) navMkt.style.display = isPlatformAdmin ? '' : 'none';
   if (isPlatformAdmin) refreshEscalationBadge();
+  renderNotifBell();
   const bb = document.getElementById('billingBtn');
   if (bb) bb.onclick = () => {
     if (hasCustomer) openBillingPortal(bb);
@@ -2901,8 +3139,9 @@ async function boot() {
     document.body.classList.add('app-ready');
     renderUserBar();
     if (!appDataLoaded) {
-      await Promise.all([loadCatalog(), loadLibrary(), loadArchive(), loadIfsVersionSetting(), loadPaygPrice()]);
+      await Promise.all([loadCatalog(), loadLibrary(), loadArchive(), loadIfsVersionSetting(), loadPaygPrice(), loadConsultantProfile(), loadNotifications()]);
       appDataLoaded = true;
+      renderNotifBell();
       renderTroubleshoot();
       handleBillingReturn();
     }
