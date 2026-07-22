@@ -380,6 +380,10 @@
     <button class="nav-item" data-tab="library" id="navLibrary" style="display:none">
       <span class="nav-icon">📚</span> Solution library
     </button>
+    <button class="nav-item" data-tab="escalations" id="navEscalations" style="display:none">
+      <span class="nav-icon">⚠️</span> Escalations
+      <span class="nav-badge" id="escBadge" style="display:none">0</span>
+    </button>
     <button class="nav-item" data-tab="catalog">
       <span class="nav-icon">⚙️</span> Error catalog
     </button>
@@ -392,6 +396,7 @@
     <div id="tab-chatbot" style="display:none"></div>
     <div id="tab-archive" style="display:none"></div>
     <div id="tab-library" style="display:none"></div>
+    <div id="tab-escalations" style="display:none"></div>
     <div id="tab-catalog" style="display:none"></div>
   </main>
 </div>
@@ -713,7 +718,7 @@ document.querySelectorAll('.nav-item').forEach(btn => {
     document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     const tab = btn.dataset.tab;
-    ['troubleshoot', 'search', 'browse', 'chatbot', 'archive', 'library', 'catalog'].forEach(t => {
+    ['troubleshoot', 'search', 'browse', 'chatbot', 'archive', 'library', 'escalations', 'catalog'].forEach(t => {
       document.getElementById('tab-' + t).style.display = t === tab ? '' : 'none';
     });
     if (tab === 'search') renderSearch();
@@ -721,6 +726,7 @@ document.querySelectorAll('.nav-item').forEach(btn => {
     if (tab === 'chatbot') renderChatbot();
     if (tab === 'archive') renderArchive();
     if (tab === 'library') renderLibrary();
+    if (tab === 'escalations') renderEscalations();
     if (tab === 'catalog') renderCatalog();
   });
 });
@@ -1328,12 +1334,130 @@ function renderRevealedSteps(container, payload, resolutionId, sol) {
       <button class="feedback-btn" id="upBtn_${resolutionId}">✓ Yes</button>
       <button class="feedback-btn" id="downBtn_${resolutionId}">✗ No</button>
     </div>`;
+  // Refundable = this resolution was actually charged (PAYG / assemble). A
+  // subscriber's reveal has no charge, so there's nothing to refund — the promise
+  // wording adapts accordingly.
+  const refundable = !!payload.charged_cents;
   document.getElementById('dlBtn_' + resolutionId)
     .addEventListener('click', () => downloadSteps(title, who, steps));
   document.getElementById('upBtn_' + resolutionId)
     .addEventListener('click', (e) => recordResolutionOutcome(resolutionId, true, e.currentTarget));
   document.getElementById('downBtn_' + resolutionId)
-    .addEventListener('click', (e) => recordResolutionOutcome(resolutionId, false, e.currentTarget));
+    .addEventListener('click', (e) => showEscalationForm(resolutionId, refundable, e.currentTarget.closest('.feedback-row')));
+}
+
+// 👎 path: capture optional context, show the consent note, then escalate.
+function showEscalationForm(resolutionId, refundable, rowEl) {
+  if (!rowEl) return;
+  rowEl.innerHTML = `
+    <div style="flex:1">
+      <div style="font-size:12px;color:var(--text-2);margin-bottom:6px">Sorry that didn't solve it. A specialist can review this for you.</div>
+      <textarea id="escCtx_${resolutionId}" rows="2" placeholder="Optional: what were you trying to do / what went wrong? (helps the specialist)"
+        style="width:100%;box-sizing:border-box;background:var(--surface-2);border:1px solid var(--border-strong);border-radius:8px;padding:8px 10px;font-size:12px;color:var(--text);font-family:inherit"></textarea>
+      <div style="font-size:11px;color:var(--text-3);margin:6px 0 8px">🔒 By requesting a review, a specialist will see this error to help resolve it.</div>
+      <button class="btn btn-primary" style="font-size:12px" id="escBtn_${resolutionId}">Request a review</button>
+      <div id="escErr_${resolutionId}" style="font-size:11px;color:var(--danger);margin-top:6px"></div>
+    </div>`;
+  document.getElementById('escBtn_' + resolutionId)
+    .addEventListener('click', (e) => submitEscalation(resolutionId, refundable, e.currentTarget, rowEl));
+}
+
+async function submitEscalation(resolutionId, refundable, btn, rowEl) {
+  const ctx = (document.getElementById('escCtx_' + resolutionId)?.value || '').trim();
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span> Submitting…';
+  const { error } = await sb.rpc('escalate_resolution', { p_resolution_id: resolutionId, p_context: ctx });
+  if (error) {
+    btn.disabled = false; btn.innerHTML = 'Request a review';
+    const errEl = document.getElementById('escErr_' + resolutionId);
+    if (errEl) errEl.textContent = error.message || 'Could not submit — try again.';
+    return;
+  }
+  rowEl.innerHTML = `<span style="font-size:12px;color:var(--success)">✓ Escalated. A specialist will review this — ${refundable ? "you'll get a verified fix or a full refund." : "we'll get you a verified fix."}</span>`;
+}
+
+// ── ADMIN ESCALATIONS QUEUE ────────────────────────────────────
+function escAgeDays(ts) {
+  return Math.floor((Date.now() - new Date(ts).getTime()) / 86400000);
+}
+
+async function refreshEscalationBadge() {
+  try {
+    const { data } = await sb.rpc('admin_escalations');
+    const openCount = (data || []).filter(r => r.state === 'escalated').length;
+    const badge = document.getElementById('escBadge');
+    if (badge) { badge.textContent = openCount; badge.style.display = openCount > 0 ? '' : 'none'; }
+  } catch {}
+}
+
+async function renderEscalations() {
+  const el = document.getElementById('tab-escalations');
+  if (!isPlatformAdmin) { el.innerHTML = `<div class="card"><div class="empty"><div class="empty-icon">🔒</div>Admin only.</div></div>`; return; }
+  el.innerHTML = `<div class="card"><div class="empty"><span class="spin"></span> Loading escalations…</div></div>`;
+  const { data, error } = await sb.rpc('admin_escalations');
+  if (error) { el.innerHTML = `<div class="card"><div class="empty">Couldn't load escalations: ${escHtml(error.message || '')}</div></div>`; return; }
+  const rows = data || [];
+  const open = rows.filter(r => r.state === 'escalated');
+  const closed = rows.filter(r => r.state !== 'escalated');
+  const stripeBase = 'https://dashboard.stripe.com/test/payments/';   // test mode
+
+  const card = (r) => {
+    const days = escAgeDays(r.updated_at);
+    const overdue = r.state === 'escalated' && days >= escalationSlaDays;
+    const refundable = (r.price_cents || 0) > 0;
+    const stateLabel = { escalated: 'Open', resolved_by_consultant: 'Resolved', refunded: 'Refunded' }[r.state] || r.state;
+    const stateColor = r.state === 'escalated' ? (overdue ? 'var(--danger)' : 'var(--warning)') : 'var(--success)';
+    return `
+    <div style="border-bottom:1px solid var(--border);padding:12px 0">
+      <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:4px">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;background:var(--surface-2);color:${stateColor}">${stateLabel}${overdue ? ' · OVERDUE' : ''}</span>
+          <span class="lib-code">${escHtml(r.error_code || '—')}</span>
+          <span style="font-size:11px;color:var(--text-3)">${days}d ago</span>
+        </div>
+        <span style="font-size:11px;color:var(--text-3)">${escHtml(r.user_email || '')}</span>
+      </div>
+      ${r.error_text ? `<div style="font-size:12px;color:var(--text);margin-bottom:4px">${escHtml(r.error_text)}</div>` : ''}
+      <div style="font-size:11px;color:var(--text-3);display:flex;gap:12px;flex-wrap:wrap">
+        ${r.screen_name ? `<span>📍 ${escHtml(r.screen_name)}</span>` : ''}
+        ${r.solution_title ? `<span>🧩 Failed fix: ${escHtml(r.solution_title)}</span>` : ''}
+        <span>${refundable
+          ? '💳 Paid $' + (r.price_cents / 100).toFixed(2) + (r.stripe_payment_intent ? ` · <a href="${stripeBase}${escHtml(r.stripe_payment_intent)}" target="_blank" rel="noopener" style="color:var(--accent)">open in Stripe</a>` : '')
+          : '🔄 Subscriber (no charge — verified fix only)'}</span>
+      </div>
+      ${r.activity
+        ? `<div style="font-size:11px;color:var(--text-2);margin-top:6px;background:var(--surface-2);border-radius:6px;padding:8px">🗣️ ${escHtml(r.activity)}</div>`
+        : `<div style="font-size:11px;color:var(--text-3);margin-top:6px">(no context provided)</div>`}
+      ${r.state === 'escalated' ? `
+      <div class="btn-row" style="margin-top:8px">
+        <button class="btn btn-primary" style="font-size:11px;padding:4px 9px;background:var(--success)" data-esc-resolve="${r.id}">✓ Mark resolved (fix delivered)</button>
+        ${refundable ? `<button class="btn btn-ghost" style="font-size:11px;padding:4px 9px" data-esc-refund="${r.id}">↩ Mark refunded</button>` : ''}
+      </div>` : ''}
+    </div>`;
+  };
+
+  el.innerHTML = `
+    <div class="card">
+      <div class="card-title" style="margin-bottom:2px">Escalations</div>
+      <div style="font-size:12px;color:var(--text-3);margin-bottom:12px">Rejected fixes awaiting review. Deliver a verified fix then mark resolved, or refund in Stripe then mark refunded. "Overdue" = older than ${escalationSlaDays} days (a flag only — nothing is automatic).</div>
+      ${open.length ? open.map(card).join('') : `<div class="empty" style="padding:20px">✓ No open escalations.</div>`}
+    </div>
+    ${closed.length ? `<div class="card"><div class="card-title" style="margin-bottom:8px">Recently closed (${closed.length})</div>${closed.slice(0, 20).map(card).join('')}</div>` : ''}`;
+
+  el.querySelectorAll('[data-esc-resolve]').forEach(b =>
+    b.addEventListener('click', () => resolveEscalation(b.dataset.escResolve, false)));
+  el.querySelectorAll('[data-esc-refund]').forEach(b =>
+    b.addEventListener('click', () => {
+      if (!confirm('Mark as refunded? Do this only after you have issued the refund in Stripe.')) return;
+      resolveEscalation(b.dataset.escRefund, true);
+    }));
+}
+
+async function resolveEscalation(resolutionId, refunded) {
+  const { error } = await sb.rpc('admin_resolve_escalation', { p_resolution_id: resolutionId, p_refunded: refunded });
+  if (error) { alert(error.message || 'Could not update escalation'); return; }
+  await renderEscalations();
+  refreshEscalationBadge();
 }
 
 // No plan at all (only reachable from Search/Browse, which everyone can open).
@@ -1363,9 +1487,8 @@ function downloadSteps(title, who, steps) {
 
 // Post-reveal thumbs = accept/verify (consultant-credit) + refund signal.
 async function recordResolutionOutcome(resolutionId, up, btn) {
-  btn.parentElement.innerHTML = up
-    ? '<span style="font-size:12px;color:var(--success)">✓ Great, glad it helped!</span>'
-    : '<span style="font-size:12px;color:var(--warning)">Thanks — flagged for review. If it didn\'t help, contact support for a refund.</span>';
+  // Only the 👍 path lands here now; 👎 goes through showEscalationForm.
+  btn.parentElement.innerHTML = '<span style="font-size:12px;color:var(--success)">✓ Great, glad it helped!</span>';
   const { error } = await sb.rpc('record_outcome', { p_resolution_id: resolutionId, p_up: up });
   if (error) console.error('record_outcome', error);
 }
@@ -2417,6 +2540,7 @@ let hasActiveSub = false;
 let paygReady = false;
 let paygPriceCents = 499;      // curated-match unlock price, from app_config at boot
 let assemblePriceCents = 499;  // AI-assembled-fix unlock price, from app_config
+let escalationSlaDays = 7;     // "overdue" window for escalations, from app_config
 
 const ACTIVE_STATUSES = ['active', 'trialing'];
 function computeAccess() {
@@ -2429,12 +2553,13 @@ function canResolve() { return hasActiveSub || paygReady; }
 // The unlock price is editable in app_config (platform_admin only); everyone may
 // read it to render the $4.99 preview.
 async function loadPaygPrice() {
-  const { data } = await sb.from('app_config').select('key,value').in('key', ['payg_price_cents', 'assemble_price']);
+  const { data } = await sb.from('app_config').select('key,value').in('key', ['payg_price_cents', 'assemble_price', 'escalation_sla_days']);
   (data || []).forEach(r => {
     const n = parseInt(r.value, 10);
     if (isNaN(n)) return;
     if (r.key === 'payg_price_cents') paygPriceCents = n;
     if (r.key === 'assemble_price') assemblePriceCents = n;
+    if (r.key === 'escalation_sla_days') escalationSlaDays = n;
   });
 }
 function planLabel() {
@@ -2656,9 +2781,12 @@ function renderUserBar() {
       <button id="billingBtn">${hasCustomer ? 'Manage billing' : 'Upgrade'}</button>` : ''}
     <button id="authSignout">Sign out</button>`;
   document.getElementById('authSignout').onclick = () => sb.auth.signOut();
-  // The Solution library is admin-managed — only platform admins see the tab.
+  // The Solution library + Escalations queue are admin-only tabs.
   const navLib = document.getElementById('navLibrary');
   if (navLib) navLib.style.display = isPlatformAdmin ? '' : 'none';
+  const navEsc = document.getElementById('navEscalations');
+  if (navEsc) navEsc.style.display = isPlatformAdmin ? '' : 'none';
+  if (isPlatformAdmin) refreshEscalationBadge();
   const bb = document.getElementById('billingBtn');
   if (bb) bb.onclick = () => {
     if (hasCustomer) openBillingPortal(bb);
