@@ -1524,7 +1524,7 @@ function myFixCard(r) {
       </div>
       <div style="font-size:11px;color:var(--text-3);display:flex;gap:12px;flex-wrap:wrap;margin-top:3px">
         <span class="lib-code">${escHtml(r.error_code || '—')}</span>
-        <span>${paid}${r.state === 'refunded' ? ' · ↩ refunded' : ''}</span>
+        <span>${paid}</span>
       </div>
       <div class="btn-row" style="margin-top:8px">
         <button class="btn btn-ghost" style="font-size:12px;padding:4px 9px" data-fix-toggle="${r.id}">View steps ▾</button>
