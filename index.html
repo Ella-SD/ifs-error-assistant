@@ -1761,24 +1761,6 @@ function wireConsultantActions(el) {
   }));
 }
 
-// Align solution component names to the catalog's canonical COMPONENT_NAME (by
-// error code) so marketplace routing + Browse grouping use one vocabulary.
-async function normalizeSolutionModules() {
-  const byCode = {};
-  catalog.forEach(r => { if (r.ERROR_CODE && !(r.ERROR_CODE in byCode)) byCode[r.ERROR_CODE] = r.COMPONENT_NAME; });
-  let fixed = 0, checked = 0;
-  for (const s of library) {
-    checked++;
-    const canonical = byCode[s.error_code];
-    if (canonical && canonical !== s.component_name) {
-      const { error } = await sb.from('solutions').update({ component_name: canonical }).eq('id', s.id);
-      if (!error) fixed++;
-    }
-  }
-  await loadLibrary();
-  return { fixed, checked };
-}
-
 // ── Marketplace admin tab (approvals + job delivery) ──
 async function renderMarketplaceAdmin() {
   const el = document.getElementById('tab-marketplace');
@@ -1787,13 +1769,6 @@ async function renderMarketplaceAdmin() {
   const [appsR, jobsR] = await Promise.all([sb.rpc('admin_consultant_applications'), sb.rpc('admin_jobs')]);
   const apps = appsR.data || [], jobs = jobsR.data || [];
   el.innerHTML = `
-    <div class="card">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
-        <div><div class="card-title" style="margin-bottom:2px">Module consistency</div>
-          <div style="font-size:12px;color:var(--text-3)">Align every solution's module to the catalog's component name (by error code), so jobs route to the right consultants. Safe to run anytime.</div></div>
-        <button class="btn btn-ghost" id="normalizeModulesBtn" style="font-size:12px;white-space:nowrap">🔧 Normalize modules</button></div>
-      <div id="normalizeMsg" style="font-size:12px;color:var(--success);margin-top:8px"></div>
-    </div>
     <div class="card"><div class="card-title" style="margin-bottom:8px">Consultant applications (${apps.length})</div>
       ${apps.length ? apps.map(adminAppCard).join('') : '<div class="empty" style="padding:14px">No applications.</div>'}</div>
     <div class="card"><div class="card-title" style="margin-bottom:8px">Jobs (${jobs.length})</div>
@@ -1831,13 +1806,6 @@ function adminJobCard(j) {
 }
 
 function wireMarketplaceAdmin(el) {
-  const nb = el.querySelector('#normalizeModulesBtn');
-  if (nb) nb.addEventListener('click', async () => {
-    nb.disabled = true; nb.textContent = 'Normalizing…';
-    const { fixed, checked } = await normalizeSolutionModules();
-    document.getElementById('normalizeMsg').textContent = `Checked ${checked} solutions — aligned ${fixed} to the catalog.`;
-    nb.disabled = false; nb.textContent = '🔧 Normalize modules';
-  });
   el.querySelectorAll('[data-appstatus]').forEach(b => b.addEventListener('click', async () => {
     const tier = el.querySelector(`[data-tier="${b.dataset.appstatus}"]`)?.value || null;
     const { error } = await sb.rpc('admin_set_consultant', { p_user: b.dataset.appstatus, p_status: b.dataset.val, p_tier: tier });
