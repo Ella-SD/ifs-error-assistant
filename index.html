@@ -643,12 +643,24 @@ async function loadLibrary() {
     const { data, error } = await sb.rpc('admin_solutions_with_steps');
     if (error) { console.error('loadLibrary(admin)', error); library = []; return; }
     library = (data || []).map(mapSolutionRow);
+    hydrateLibraryModules();
     return;
   }
   const { data, error } = await sb.from('solutions')
     .select(SOLUTION_META_COLS).order('created_at', { ascending: true });
   if (error) { console.error('loadLibrary', error); library = []; return; }
   library = (data || []).map(mapSolutionRow);   // instructions -> [] (not selected)
+  hydrateLibraryModules();
+}
+
+// A solution exists to fix an error, so its component/module is a property of the
+// ERROR — take it from the error's catalog entry (the source of truth), not from
+// a hand-entered label on the solution. Overrides each solution's component_name
+// with the catalog's by error code, so display + grouping always match the
+// catalog. (Routing already derives the module the same way at escalation time.)
+function hydrateLibraryModules() {
+  if (!catalog || !catalog.length) return;   // catalog not loaded yet (first-boot race)
+  library.forEach(l => { const m = catalogModuleFor(l.error_code); if (m) l.component_name = m; });
 }
 
 // Deprecated: writes now go straight to Supabase. Kept as a no-op so any missed
@@ -3212,6 +3224,7 @@ async function boot() {
     renderUserBar();
     if (!appDataLoaded) {
       await Promise.all([loadCatalog(), loadLibrary(), loadArchive(), loadIfsVersionSetting(), loadPaygPrice(), loadConsultantProfile(), loadNotifications()]);
+      hydrateLibraryModules();   // catalog + library both loaded now
       appDataLoaded = true;
       renderNotifBell();
       renderTroubleshoot();
