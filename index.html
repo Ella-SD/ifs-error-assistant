@@ -482,6 +482,92 @@
   .plan-card .btn { margin-top: 6px; }
 </style>
 
+<style>
+  /* ── Landing / cover page ── */
+  .auth-gate.landing-mode { display:block; align-items:initial; justify-content:initial; padding:0; overflow-y:auto; background:var(--bg); }
+  .lp-nav {
+    height:60px; background:var(--header-bg); display:flex; align-items:center;
+    justify-content:space-between; padding:0 24px; position:sticky; top:0; z-index:10;
+  }
+  .lp-brand { display:flex; align-items:center; gap:10px; }
+  /* LOGO: swap this tile for <img src="assets/logo.svg" style="height:30px"> when the brand asset lands */
+  .lp-logo-tile {
+    width:30px; height:30px; border-radius:8px; background:var(--accent);
+    display:flex; align-items:center; justify-content:center; flex:none;
+  }
+  .lp-brand-name { color:var(--header-text); font-weight:700; font-size:16px; letter-spacing:.01em; }
+  .lp-nav-btn {
+    background:transparent; color:var(--header-text); border:1px solid rgba(255,255,255,.28);
+    border-radius:8px; padding:8px 16px; font-size:14px; font-weight:500; cursor:pointer; font-family:var(--font);
+  }
+  .lp-nav-btn:hover { border-color:rgba(255,255,255,.6); }
+
+  .lp-wrap { max-width:1000px; margin:0 auto; }
+  .lp-hero { text-align:center; padding:78px 24px 60px; }
+  .lp-hero h1 {
+    font-size:46px; font-weight:700; line-height:1.08; letter-spacing:-.025em;
+    color:var(--text); max-width:780px; margin:0 auto 20px;
+  }
+  .lp-hero .sub { font-size:19px; color:var(--text-2); max-width:640px; margin:0 auto 30px; line-height:1.5; }
+  .lp-cta-row { display:flex; gap:12px; justify-content:center; flex-wrap:wrap; }
+  .lp-btn-primary {
+    background:var(--accent); color:#fff; padding:14px 28px; border-radius:10px;
+    font-size:15px; font-weight:600; border:none; cursor:pointer; font-family:var(--font);
+  }
+  .lp-btn-primary:hover { opacity:.92; }
+  .lp-btn-ghost {
+    background:var(--surface); color:var(--text); border:1px solid var(--border-strong);
+    padding:14px 28px; border-radius:10px; font-size:15px; font-weight:500; cursor:pointer; font-family:var(--font);
+  }
+  .lp-btn-ghost:hover { border-color:var(--accent); color:var(--accent); }
+
+  .lp-section { padding:60px 24px; }
+  .lp-eyebrow { text-align:center; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.1em; color:var(--accent); margin-bottom:10px; }
+  .lp-h2 { text-align:center; font-size:31px; font-weight:700; color:var(--text); margin-bottom:44px; letter-spacing:-.015em; }
+
+  .lp-steps { display:flex; gap:20px; flex-wrap:wrap; justify-content:center; }
+  .lp-step {
+    flex:1; min-width:240px; max-width:300px; background:var(--surface);
+    border:1px solid var(--border); border-radius:14px; padding:28px 24px; text-align:center;
+  }
+  .lp-step-ic { font-size:32px; margin-bottom:14px; }
+  .lp-step h3 { font-size:17px; font-weight:600; margin-bottom:7px; color:var(--text); }
+  .lp-step p { font-size:14px; color:var(--text-2); line-height:1.55; }
+
+  .lp-price-grid { display:flex; gap:18px; flex-wrap:wrap; justify-content:center; align-items:stretch; }
+  .lp-price {
+    flex:1; min-width:250px; max-width:320px; background:var(--surface);
+    border:1px solid var(--border); border-radius:16px; padding:28px; display:flex; flex-direction:column;
+  }
+  .lp-price.featured { border:2px solid var(--accent); box-shadow:0 8px 30px rgba(29,111,214,.12); }
+  .lp-price .tag { font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--text-2); margin-bottom:10px; }
+  .lp-price.featured .tag { color:var(--accent); }
+  .lp-price .amt { font-size:38px; font-weight:700; color:var(--text); line-height:1; }
+  .lp-price .amt span { font-size:15px; font-weight:500; color:var(--text-3); }
+  .lp-price .blurb { font-size:14px; color:var(--text-2); margin:12px 0 18px; line-height:1.5; flex:1; }
+  .lp-pop { display:inline-block; align-self:flex-start; background:var(--accent-dim); color:var(--accent); font-size:11px; font-weight:700; padding:3px 9px; border-radius:999px; margin-bottom:10px; }
+
+  .lp-trust { background:var(--surface); border-top:1px solid var(--border); border-bottom:1px solid var(--border); }
+  .lp-trust-row { display:flex; gap:20px; flex-wrap:wrap; justify-content:center; text-align:center; }
+  .lp-stat { flex:1; min-width:200px; max-width:300px; padding:8px; }
+  .lp-stat .big { font-size:26px; font-weight:700; color:var(--text); margin-bottom:4px; }
+  .lp-stat .lbl { font-size:14px; color:var(--text-2); line-height:1.4; }
+
+  .lp-footer { background:var(--header-bg); color:var(--header-text-dim); padding:34px 24px; text-align:center; font-size:13px; line-height:1.7; }
+  .lp-footer a { color:var(--header-text); text-decoration:none; }
+  .lp-footer a:hover { text-decoration:underline; }
+  .lp-footer .disclaimer { font-size:12px; color:rgba(255,255,255,.4); margin-top:10px; }
+
+  .auth-back { display:inline-block; margin-bottom:14px; font-size:13px; color:var(--text-2); cursor:pointer; }
+  .auth-back:hover { color:var(--accent); }
+
+  @media (max-width:640px) {
+    .lp-hero h1 { font-size:34px; }
+    .lp-hero .sub { font-size:17px; }
+    .lp-h2 { font-size:25px; }
+  }
+</style>
+
 <div id="authGate" class="auth-gate" style="display:none"></div>
 
 <script>
@@ -3051,17 +3137,101 @@ async function handleBillingReturn() {
   alert(b === 'payg_ready' ? 'Card saved — you can now resolve errors.' : 'You\'re all set — thanks!');
 }
 
+// ── Landing / cover page ───────────────────────────────────────
+function landingLogoTile() {
+  // LOGO: swap this tile for <img src="assets/logo.svg" style="height:30px"> when the brand asset lands
+  return `<span class="lp-logo-tile"><svg width="17" height="17" viewBox="0 0 28 28" aria-hidden="true"><path d="M14 3 L16 11 L24 14 L16 17 L14 25 L12 17 L4 14 L12 11 Z" fill="#fff"/></svg></span>`;
+}
+
+function renderLanding() {
+  document.body.classList.remove('app-ready');
+  const gate = document.getElementById('authGate');
+  gate.style.display = 'block';
+  gate.classList.add('landing-mode');
+  gate.innerHTML = `
+    <nav class="lp-nav">
+      <div class="lp-brand">${landingLogoTile()}<span class="lp-brand-name">IFS GURU</span></div>
+      <button class="lp-nav-btn" id="lpLogin">Log in</button>
+    </nav>
+
+    <header class="lp-hero">
+      <h1>Fix any IFS error in minutes — not days.</h1>
+      <p class="sub">Upload a screenshot of any IFS ERP error. We match it against 53,000+ known Oracle errors and give you the exact, verified steps to resolve it.</p>
+      <div class="lp-cta-row">
+        <button class="lp-btn-primary" id="lpStart">Get started</button>
+        <button class="lp-btn-ghost" id="lpHow">See how it works</button>
+      </div>
+    </header>
+
+    <section class="lp-trust">
+      <div class="lp-section lp-wrap lp-trust-row" style="padding-top:34px;padding-bottom:34px">
+        <div class="lp-stat"><div class="big">53,703</div><div class="lbl">known IFS errors catalogued</div></div>
+        <div class="lp-stat"><div class="big">Verified — or free</div><div class="lbl">a verified fix, or your money back</div></div>
+        <div class="lp-stat"><div class="big">Expert help</div><div class="lbl">a consultant marketplace when you're stuck</div></div>
+      </div>
+    </section>
+
+    <section class="lp-section lp-wrap" id="lpHowSec">
+      <div class="lp-eyebrow">How it works</div>
+      <h2 class="lp-h2">From error to fix in three steps</h2>
+      <div class="lp-steps">
+        <div class="lp-step"><div class="lp-step-ic">📸</div><h3>1 · Upload or search</h3><p>Snap a screenshot of the error, or search by error code or keyword.</p></div>
+        <div class="lp-step"><div class="lp-step-ic">🎯</div><h3>2 · Instant match</h3><p>We identify it against the full IFS error catalogue and find the right fix.</p></div>
+        <div class="lp-step"><div class="lp-step-ic">✅</div><h3>3 · Step-by-step fix</h3><p>Follow a clear, verified resolution — or escalate it to an IFS expert.</p></div>
+      </div>
+    </section>
+
+    <section class="lp-section lp-wrap">
+      <div class="lp-eyebrow">Pricing</div>
+      <h2 class="lp-h2">Simple, transparent pricing</h2>
+      <div class="lp-price-grid">
+        <div class="lp-price">
+          <div class="tag">Personal</div>
+          <div class="amt">$49<span>/mo</span></div>
+          <div class="blurb">Unlimited fixes for one user. Ideal for a single consultant or power user.</div>
+          <button class="lp-btn-ghost lpBuy">Get started</button>
+        </div>
+        <div class="lp-price featured">
+          <span class="lp-pop">Most popular</span>
+          <div class="tag">Company</div>
+          <div class="amt">$299<span>/mo</span></div>
+          <div class="blurb">Unlimited fixes for everyone at your company — one plan for the whole team.</div>
+          <button class="lp-btn-primary lpBuy">Get started</button>
+        </div>
+        <div class="lp-price">
+          <div class="tag">Pay as you go</div>
+          <div class="amt">$4.99<span>/fix</span></div>
+          <div class="blurb">No subscription. Pay only when you unlock the steps for a fix.</div>
+          <button class="lp-btn-ghost lpBuy">Get started</button>
+        </div>
+      </div>
+    </section>
+
+    <footer class="lp-footer">
+      <div><a href="legal.html" target="_blank" rel="noopener">Terms &amp; Privacy</a> &nbsp;·&nbsp; <a href="mailto:support@ifsguru.com">support@ifsguru.com</a></div>
+      <div style="margin-top:8px">© 2026 IFSGURU AI</div>
+      <div class="disclaimer">Not affiliated with, endorsed by, or connected to IFS AB. “IFS” is a trademark of its respective owner, used only to describe compatibility.</div>
+    </footer>`;
+
+  document.getElementById('lpLogin').onclick = () => { authMode = 'login'; renderAuthScreen(); };
+  document.getElementById('lpStart').onclick = () => { authMode = 'signup'; renderAuthScreen(); };
+  document.getElementById('lpHow').onclick = () => document.getElementById('lpHowSec').scrollIntoView({ behavior: 'smooth' });
+  gate.querySelectorAll('.lpBuy').forEach(b => b.onclick = () => { authMode = 'signup'; renderAuthScreen(); });
+}
+
 // ── Login / signup screen ──────────────────────────────────────
 let authMode = 'login';   // 'login' | 'signup'
 
 function renderAuthScreen(msg) {
   document.body.classList.remove('app-ready');
   const gate = document.getElementById('authGate');
+  gate.classList.remove('landing-mode');
   gate.style.display = 'flex';
   const isSignup = authMode === 'signup';
   gate.innerHTML = `
     <div class="auth-card">
-      <div class="auth-logo">IFS</div>
+      <div class="auth-back" id="authBack">← Back to home</div>
+      <div class="auth-logo">IFS GURU</div>
       <div class="auth-title">${isSignup ? 'Create your account' : 'Sign in'}</div>
       <div class="auth-sub">IFS Error Assistant</div>
       <div class="auth-field">
@@ -3086,6 +3256,7 @@ function renderAuthScreen(msg) {
     </div>`;
   if (msg) showAuthMsg(msg.text, msg.type);
   document.getElementById('authSubmit').onclick = isSignup ? handleSignup : handleLogin;
+  document.getElementById('authBack').onclick = renderLanding;
   document.getElementById('authSwitch').onclick = () => {
     authMode = isSignup ? 'login' : 'signup'; renderAuthScreen();
   };
@@ -3218,7 +3389,7 @@ async function boot() {
     const { data: { session } } = await sb.auth.getSession();
     if (!session) {
       authUser = null; profile = null; company = null; isPlatformAdmin = false; appDataLoaded = false;
-      renderAuthScreen();
+      renderLanding();
       return;
     }
     authUser = session.user;
