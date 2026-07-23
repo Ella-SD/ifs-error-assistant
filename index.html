@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="icon" type="image/png" href="assets/logo.png">
 <style>
   :root {
     /* Light theme — IFS Community-inspired: white content, dark top bar */
@@ -27,9 +28,10 @@
     --danger: #d92d20;
     --danger-dim: #fdecea;
     /* dark top bar (echoes IFS's black header) */
-    --header-bg: #0b0b0f;
-    --header-text: #ffffff;
-    --header-text-dim: rgba(255,255,255,.55);
+    --header-bg: #ffffff;
+    --header-text: #16181f;
+    --header-text-dim: #565e70;
+    --footer-bg: #1c1630;
     --radius: 10px;
     --font: 'Roboto', 'Inter', system-ui, -apple-system, sans-serif;
     --mono: 'JetBrains Mono', 'Fira Code', monospace;
@@ -48,18 +50,13 @@
   /* Header */
   .header {
     background: var(--header-bg);
-    padding: 14px 24px;
+    border-bottom: 1px solid var(--border);
+    padding: 8px 24px;
     display: flex;
     align-items: center;
     gap: 12px;
   }
-  .header-logo {
-    width: 32px; height: 32px;
-    background: var(--accent);
-    border-radius: 8px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 15px; font-weight: 700; color: white; letter-spacing: -.02em;
-  }
+  .header-logo-img { height: 38px; width: auto; display: block; }
   .header-title { font-size: 16px; font-weight: 700; color: var(--header-text); letter-spacing: .01em; }
   .header-sub { font-size: 12px; color: var(--header-text-dim); margin-left: auto; }
   .catalog-status {
@@ -356,8 +353,7 @@
 <body>
 
 <div class="header">
-  <div class="header-logo">IFS</div>
-  <div class="header-title">IFS Error Assistant</div>
+  <img src="assets/logo.png" class="header-logo-img" alt="IFSGURU">
   <div id="catalogStatus" class="catalog-status loading">Loading catalog...</div>
   <div class="header-sub" id="catalogCount"></div>
 </div>
@@ -439,6 +435,7 @@
     border-radius: var(--radius); width: 100%; max-width: 400px; padding: 32px;
   }
   .auth-logo { font-weight: 700; font-size: 20px; color: var(--accent); margin-bottom: 4px; }
+  .auth-logo-img { height: 56px; width: auto; display: block; margin-bottom: 14px; }
   .auth-title { font-size: 18px; font-weight: 600; margin-bottom: 6px; }
   .auth-sub { font-size: 13px; color: var(--text-2); margin-bottom: 20px; }
   .auth-field { margin-bottom: 14px; }
@@ -490,6 +487,7 @@
     justify-content:space-between; padding:0 24px; position:sticky; top:0; z-index:10;
   }
   .lp-brand { display:flex; align-items:center; gap:10px; }
+  .lp-logo-img { height:42px; width:auto; display:block; }
   /* LOGO: swap this tile for <img src="assets/logo.svg" style="height:30px"> when the brand asset lands */
   .lp-logo-tile {
     width:30px; height:30px; border-radius:8px; background:var(--accent);
@@ -497,10 +495,10 @@
   }
   .lp-brand-name { color:var(--header-text); font-weight:700; font-size:16px; letter-spacing:.01em; }
   .lp-nav-btn {
-    background:transparent; color:var(--header-text); border:1px solid rgba(255,255,255,.28);
-    border-radius:8px; padding:8px 16px; font-size:14px; font-weight:500; cursor:pointer; font-family:var(--font);
+    background:var(--accent); color:#fff; border:none;
+    border-radius:8px; padding:9px 18px; font-size:14px; font-weight:600; cursor:pointer; font-family:var(--font);
   }
-  .lp-nav-btn:hover { border-color:rgba(255,255,255,.6); }
+  .lp-nav-btn:hover { opacity:.92; }
 
   .lp-wrap { max-width:1000px; margin:0 auto; }
   .lp-hero { text-align:center; padding:78px 24px 60px; }
@@ -553,8 +551,8 @@
   .lp-stat .big { font-size:26px; font-weight:700; color:var(--text); margin-bottom:4px; }
   .lp-stat .lbl { font-size:14px; color:var(--text-2); line-height:1.4; }
 
-  .lp-footer { background:var(--header-bg); color:var(--header-text-dim); padding:34px 24px; text-align:center; font-size:13px; line-height:1.7; }
-  .lp-footer a { color:var(--header-text); text-decoration:none; }
+  .lp-footer { background:var(--footer-bg); color:rgba(255,255,255,.6); padding:34px 24px; text-align:center; font-size:13px; line-height:1.7; }
+  .lp-footer a { color:#fff; text-decoration:none; }
   .lp-footer a:hover { text-decoration:underline; }
   .lp-footer .disclaimer { font-size:12px; color:rgba(255,255,255,.4); margin-top:10px; }
 
@@ -3139,8 +3137,7 @@ async function handleBillingReturn() {
 
 // ── Landing / cover page ───────────────────────────────────────
 function landingLogoTile() {
-  // LOGO: swap this tile for <img src="assets/logo.svg" style="height:30px"> when the brand asset lands
-  return `<span class="lp-logo-tile"><svg width="17" height="17" viewBox="0 0 28 28" aria-hidden="true"><path d="M14 3 L16 11 L24 14 L16 17 L14 25 L12 17 L4 14 L12 11 Z" fill="#fff"/></svg></span>`;
+  return `<img src="assets/logo.png" class="lp-logo-img" alt="IFSGURU">`;
 }
 
 function renderLanding() {
@@ -3150,7 +3147,7 @@ function renderLanding() {
   gate.classList.add('landing-mode');
   gate.innerHTML = `
     <nav class="lp-nav">
-      <div class="lp-brand">${landingLogoTile()}<span class="lp-brand-name">IFS GURU</span></div>
+      <div class="lp-brand">${landingLogoTile()}</div>
       <button class="lp-nav-btn" id="lpLogin">Log in</button>
     </nav>
 
@@ -3231,7 +3228,7 @@ function renderAuthScreen(msg) {
   gate.innerHTML = `
     <div class="auth-card">
       <div class="auth-back" id="authBack">← Back to home</div>
-      <div class="auth-logo">IFS GURU</div>
+      <img src="assets/logo.png" class="auth-logo-img" alt="IFSGURU">
       <div class="auth-title">${isSignup ? 'Create your account' : 'Sign in'}</div>
       <div class="auth-sub">IFS Error Assistant</div>
       <div class="auth-field">
@@ -3303,7 +3300,7 @@ function renderOnboarding(msg) {
   gate.style.display = 'flex';
   gate.innerHTML = `
     <div class="auth-card">
-      <div class="auth-logo">IFS</div>
+      <img src="assets/logo.png" class="auth-logo-img" alt="IFSGURU">
       <div class="auth-title">Set up your company</div>
       <div class="auth-sub">Signed in as ${escHtml(authUser.email)}</div>
       <div class="auth-field">
