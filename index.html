@@ -1635,16 +1635,25 @@ async function renderConsultant() {
     return;
   }
   el.innerHTML = `<div class="card"><div class="empty"><span class="spin"></span> Loading jobs…</div></div>`;
-  const [openR, mineR] = await Promise.all([sb.rpc('open_jobs_for_consultant'), sb.rpc('my_consultant_jobs')]);
+  const [openR, mineR, coR] = await Promise.all([
+    sb.rpc('open_jobs_for_consultant'), sb.rpc('my_consultant_jobs'),
+    sb.from('cashout_requests').select('amount_cents,status').order('requested_at', { ascending: false })]);
   const open = openR.data || [], mine = mineR.data || [];
+  const pendingCashout = (coR.data || []).filter(c => c.status === 'requested').reduce((s, c) => s + c.amount_cents, 0);
   const bal = ((consultantProfile.credit_balance_cents || 0) / 100).toFixed(2);
+  const canCashout = (consultantProfile.credit_balance_cents || 0) >= consultantCashoutMinCents;
   el.innerHTML = `
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
         <div><div class="card-title" style="margin-bottom:2px">Consultant</div>
           <div style="font-size:12px;color:var(--text-3)">Tier <b style="color:var(--text-2)">${escHtml(consultantProfile.tier)}</b> · Modules: ${escHtml((consultantProfile.modules || []).join(', ') || '—')}
             <button class="btn btn-ghost" id="editModulesBtn" style="font-size:10px;padding:2px 7px;margin-left:6px">✏️ Edit modules</button></div></div>
-        <div style="text-align:right"><div style="font-size:11px;color:var(--text-3)">Credit balance</div><div style="font-size:18px;font-weight:700;color:var(--success)">$${bal}</div></div>
+        <div style="text-align:right"><div style="font-size:11px;color:var(--text-3)">Credit balance</div>
+          <div style="font-size:18px;font-weight:700;color:var(--success)">$${bal}</div>
+          ${pendingCashout ? `<div style="font-size:10px;color:var(--warning)">Pending cash-out: $${(pendingCashout / 100).toFixed(2)}</div>` : ''}
+          ${canCashout ? `<button class="btn btn-ghost" id="cashoutBtn" style="font-size:11px;padding:3px 8px;margin-top:4px">💸 Request cash-out</button>` : `<div style="font-size:10px;color:var(--text-3);margin-top:2px">Min $${(consultantCashoutMinCents / 100).toFixed(2)} to cash out</div>`}
+          <div id="cashoutMsg" style="font-size:10px;color:var(--danger);margin-top:2px"></div>
+        </div>
       </div>
     </div>
     <div class="card"><div class="card-title" style="margin-bottom:8px">Open jobs (${open.length})</div>
@@ -1733,6 +1742,14 @@ function consultantMyJobCard(j) {
 function wireConsultantActions(el) {
   const emb = el.querySelector('#editModulesBtn');
   if (emb) emb.addEventListener('click', editConsultantModules);
+  const cob = el.querySelector('#cashoutBtn');
+  if (cob) cob.addEventListener('click', async () => {
+    if (!confirm('Request a cash-out of your full balance? An admin will pay it out off-platform.')) return;
+    cob.disabled = true; cob.textContent = 'Requesting…';
+    const { error } = await sb.rpc('request_cashout');
+    if (error) { document.getElementById('cashoutMsg').textContent = error.message; cob.disabled = false; cob.textContent = '💸 Request cash-out'; return; }
+    await loadConsultantProfile(); renderConsultant();
+  });
   el.querySelectorAll('[data-accept]').forEach(b => b.addEventListener('click', async () => {
     b.disabled = true; b.textContent = 'Accepting…';
     const { error } = await sb.rpc('accept_job', { p_job_id: b.dataset.accept });
@@ -1766,11 +1783,13 @@ async function renderMarketplaceAdmin() {
   const el = document.getElementById('tab-marketplace');
   if (!isPlatformAdmin) { el.innerHTML = `<div class="card"><div class="empty"><div class="empty-icon">🔒</div>Admin only.</div></div>`; return; }
   el.innerHTML = `<div class="card"><div class="empty"><span class="spin"></span> Loading…</div></div>`;
-  const [appsR, jobsR] = await Promise.all([sb.rpc('admin_consultant_applications'), sb.rpc('admin_jobs')]);
-  const apps = appsR.data || [], jobs = jobsR.data || [];
+  const [appsR, jobsR, coR] = await Promise.all([sb.rpc('admin_consultant_applications'), sb.rpc('admin_jobs'), sb.rpc('admin_cashouts')]);
+  const apps = appsR.data || [], jobs = jobsR.data || [], cashouts = coR.data || [];
   el.innerHTML = `
     <div class="card"><div class="card-title" style="margin-bottom:8px">Consultant applications (${apps.length})</div>
       ${apps.length ? apps.map(adminAppCard).join('') : '<div class="empty" style="padding:14px">No applications.</div>'}</div>
+    <div class="card"><div class="card-title" style="margin-bottom:8px">Cash-out requests (${cashouts.length})</div>
+      ${cashouts.length ? cashouts.map(adminCashoutCard).join('') : '<div class="empty" style="padding:14px">No cash-out requests.</div>'}</div>
     <div class="card"><div class="card-title" style="margin-bottom:8px">Jobs (${jobs.length})</div>
       ${jobs.length ? jobs.map(adminJobCard).join('') : '<div class="empty" style="padding:14px">No jobs yet.</div>'}</div>`;
   wireMarketplaceAdmin(el);
@@ -1805,7 +1824,22 @@ function adminJobCard(j) {
     <div id="ajobMsg_${j.job_id}" style="font-size:11px;color:var(--danger);margin-top:4px"></div></div>`;
 }
 
+function adminCashoutCard(c) {
+  const paid = c.status === 'paid';
+  return `<div style="border-bottom:1px solid var(--border);padding:10px 0;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center">
+    <div><div style="font-size:13px;font-weight:600">$${(c.amount_cents / 100).toFixed(2)} — ${escHtml(c.consultant_email || '')}</div>
+      <div style="font-size:11px;color:var(--text-3)">${paid ? 'Paid ' + new Date(c.paid_at).toLocaleDateString() : 'Requested ' + new Date(c.requested_at).toLocaleDateString()} · <b style="color:${paid ? 'var(--success)' : 'var(--warning)'}">${c.status}</b></div></div>
+    ${!paid ? `<button class="btn btn-primary" style="font-size:11px;padding:4px 8px;background:var(--success)" data-cashout-paid="${c.id}">Mark paid</button>` : ''}
+  </div>`;
+}
+
 function wireMarketplaceAdmin(el) {
+  el.querySelectorAll('[data-cashout-paid]').forEach(b => b.addEventListener('click', async () => {
+    if (!confirm('Mark this cash-out as paid? Only after you have actually paid the consultant off-platform.')) return;
+    const { error } = await sb.rpc('admin_mark_cashout_paid', { p_id: b.dataset.cashoutPaid });
+    if (error) { alert(error.message); return; }
+    renderMarketplaceAdmin();
+  }));
   el.querySelectorAll('[data-appstatus]').forEach(b => b.addEventListener('click', async () => {
     const tier = el.querySelector(`[data-tier="${b.dataset.appstatus}"]`)?.value || null;
     const { error } = await sb.rpc('admin_set_consultant', { p_user: b.dataset.appstatus, p_status: b.dataset.val, p_tier: tier });
@@ -2907,6 +2941,7 @@ let paygReady = false;
 let paygPriceCents = 499;      // curated-match unlock price, from app_config at boot
 let assemblePriceCents = 499;  // AI-assembled-fix unlock price, from app_config
 let escalationSlaDays = 7;     // "overdue" window for escalations, from app_config
+let consultantCashoutMinCents = 5000;  // min consultant balance to request a cash-out
 
 const ACTIVE_STATUSES = ['active', 'trialing'];
 function computeAccess() {
@@ -2919,13 +2954,14 @@ function canResolve() { return hasActiveSub || paygReady; }
 // The unlock price is editable in app_config (platform_admin only); everyone may
 // read it to render the $4.99 preview.
 async function loadPaygPrice() {
-  const { data } = await sb.from('app_config').select('key,value').in('key', ['payg_price_cents', 'assemble_price', 'escalation_sla_days']);
+  const { data } = await sb.from('app_config').select('key,value').in('key', ['payg_price_cents', 'assemble_price', 'escalation_sla_days', 'consultant_cashout_min_cents']);
   (data || []).forEach(r => {
     const n = parseInt(r.value, 10);
     if (isNaN(n)) return;
     if (r.key === 'payg_price_cents') paygPriceCents = n;
     if (r.key === 'assemble_price') assemblePriceCents = n;
     if (r.key === 'escalation_sla_days') escalationSlaDays = n;
+    if (r.key === 'consultant_cashout_min_cents') consultantCashoutMinCents = n;
   });
 }
 function planLabel() {
