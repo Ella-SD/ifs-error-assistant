@@ -1,7 +1,7 @@
 # Data flow & third-party processing
 
 Written to capture where user data goes while it's fresh — useful for enterprise
-procurement/security reviews as the platform scales past the D&K pilot. Not
+procurement/security reviews as the platform scales after public launch. Not
 published anywhere; internal reference.
 
 ## Systems involved
