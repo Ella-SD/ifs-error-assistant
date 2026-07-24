@@ -28,9 +28,9 @@ Only 10 samples exist today; a public audience needs real coverage.
 - [ ] **Deferred to post-launch** (timed to real usage data, not pre-launch guesswork): the full **catalog → Postgres migration + ~18K shell-solution batch**, and the **IFS Cloud catalog**. These remain the right eventual investment, just not now.
 
 ## 3. Email deliverability [Ella + Code]
-- [ ] **Custom SMTP** (provider + domain verify + Supabase → Auth → Emails → SMTP). [Ella]
-- [ ] Delivery test to a real inbox. [Verify]
-- [ ] Turn **email confirmation ON** (only after SMTP verified). [Ella]
+- [x] **Custom SMTP** — **Brevo** (domain `ifsguru.com` authenticated via DKIM/SPF/DMARC; Supabase SMTP → `smtp-relay.brevo.com:465`, username = Brevo `…@smtp-brevo.com` login, password = SMTP key). Switched from Resend (Resend needs an MX incompatible with Namecheap free email forwarding).
+- [x] Delivery test to a real inbox — invite email received. [Verified 2026-07-24]
+- [ ] Turn **email confirmation ON** in Supabase (Auth → Providers/Email) — do this when ready to require verified signups. [Ella]
 
 ## 4. Legal [Code + Ella]
 - [ ] Fill the `legal.html` placeholders — entity name + contact email. [Code, once known]
