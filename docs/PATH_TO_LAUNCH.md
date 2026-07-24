@@ -22,8 +22,10 @@ Legend: **[Ella]** business/dashboard/decisions · **[Code]** app/infra · **[Ve
 
 ## 2. Solution content — so users actually find fixes
 Only 10 samples exist today; a public audience needs real coverage.
-- [ ] **Decision pending with Chat:** the full **catalog → Postgres move + ~18K shell-solutions batch** (one solution per error), **or** a lighter start (a general seed set + AI-assemble + consultants filling the rest over time). *Do not start either until confirmed.*
-- [ ] Get real fix coverage beyond the 10 samples before public users arrive.
+**Decision (2026-07-23, confirmed with Chat): lighter hand-curated seed — quality over quantity.**
+- [ ] Hand-curate a real solution set for the **most common / foundational IFS errors** before public users arrive.
+- [ ] Let **AI-assemble + the marketplace** fill coverage gaps organically from real usage — that is exactly what those two features exist to do.
+- [ ] **Deferred to post-launch** (timed to real usage data, not pre-launch guesswork): the full **catalog → Postgres migration + ~18K shell-solution batch**, and the **IFS Cloud catalog**. These remain the right eventual investment, just not now.
 
 ## 3. Email deliverability [Ella + Code]
 - [ ] **Custom SMTP** (provider + domain verify + Supabase → Auth → Emails → SMTP). [Ella]
