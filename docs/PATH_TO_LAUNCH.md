@@ -16,8 +16,8 @@ Legend: **[Ella]** business/dashboard/decisions · **[Code]** app/infra · **[Ve
 ---
 
 ## 1. Business foundation — the gating prerequisite [Ella]
-- [ ] Register the **legal entity** (name / type / jurisdiction).
-- [ ] Register a **domain** + a **contact/support email** on it.
+- [x] Register the **legal entity** — Optimal Consulting Inc. (operates the IFSGURU product).
+- [x] Register a **domain** (ifsguru.com) + **contact/support emails** (admin@ / support@ / consultant@).
 - [x] Stripe **business profile** completed.
 
 ## 2. Solution content — so users actually find fixes
