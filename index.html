@@ -499,6 +499,10 @@
     border-radius:8px; padding:9px 18px; font-size:14px; font-weight:600; cursor:pointer; font-family:var(--font);
   }
   .lp-nav-btn:hover { opacity:.92; }
+  .lp-nav-right { display:flex; align-items:center; gap:24px; }
+  .lp-nav-links { display:flex; gap:24px; }
+  .lp-nav-links a { font-size:14px; font-weight:500; color:var(--text-2); cursor:pointer; text-decoration:none; }
+  .lp-nav-links a:hover { color:var(--accent); }
 
   .lp-wrap { max-width:1000px; margin:0 auto; }
   .lp-hero { text-align:center; padding:78px 24px 60px; }
@@ -579,9 +583,16 @@
   .auth-back:hover { color:var(--accent); }
 
   @media (max-width:640px) {
-    .lp-hero h1 { font-size:34px; }
-    .lp-hero .sub { font-size:17px; }
-    .lp-h2 { font-size:25px; }
+    .lp-nav-links { display:none; }
+    .lp-nav { padding:0 16px; }
+    .lp-hero { padding:44px 20px 40px; }
+    .lp-hero h1 { font-size:32px; }
+    .lp-hero .sub { font-size:16px; }
+    .lp-h2 { font-size:24px; }
+    .lp-section { padding:44px 20px; }
+    .lp-preview { margin-top:32px; }
+    .lp-window-body { padding:16px; }
+    .lp-pv-err { font-size:11.5px; }
   }
 </style>
 
@@ -3167,7 +3178,13 @@ function renderLanding() {
   gate.innerHTML = `
     <nav class="lp-nav">
       <div class="lp-brand">${landingLogoTile()}</div>
-      <button class="lp-nav-btn" id="lpLogin">Log in</button>
+      <div class="lp-nav-right">
+        <div class="lp-nav-links">
+          <a id="lpNavHow">How it works</a>
+          <a id="lpNavPrice">Pricing</a>
+        </div>
+        <button class="lp-nav-btn" id="lpLogin">Log in</button>
+      </div>
     </nav>
 
     <header class="lp-hero">
@@ -3221,7 +3238,7 @@ function renderLanding() {
       </div>
     </section>
 
-    <section class="lp-section lp-wrap">
+    <section class="lp-section lp-wrap" id="lpPriceSec">
       <div class="lp-eyebrow">Pricing</div>
       <h2 class="lp-h2">Simple, transparent pricing</h2>
       <div class="lp-price-grid">
@@ -3255,6 +3272,8 @@ function renderLanding() {
 
   document.getElementById('lpLogin').onclick = () => { authMode = 'login'; renderAuthScreen(); };
   document.getElementById('lpStart').onclick = () => { authMode = 'signup'; renderAuthScreen(); };
+  document.getElementById('lpNavHow').onclick = () => document.getElementById('lpHowSec').scrollIntoView({ behavior: 'smooth' });
+  document.getElementById('lpNavPrice').onclick = () => document.getElementById('lpPriceSec').scrollIntoView({ behavior: 'smooth' });
   document.getElementById('lpHow').onclick = () => document.getElementById('lpHowSec').scrollIntoView({ behavior: 'smooth' });
   gate.querySelectorAll('.lpBuy').forEach(b => b.onclick = () => { authMode = 'signup'; renderAuthScreen(); });
 }
