@@ -487,6 +487,7 @@
   .lp-nav {
     height:60px; background:var(--header-bg); display:flex; align-items:center;
     justify-content:space-between; padding:0 24px; position:sticky; top:0; z-index:10;
+    border-bottom:1px solid var(--border);
   }
   .lp-brand { display:flex; align-items:center; gap:10px; }
   .lp-logo-img { height:42px; width:auto; display:block; }
@@ -499,15 +500,27 @@
   .lp-nav-btn {
     background:var(--accent); color:#fff; border:none;
     border-radius:8px; padding:9px 18px; font-size:14px; font-weight:600; cursor:pointer; font-family:var(--font);
+    transition:transform .15s, box-shadow .15s, opacity .15s;
   }
-  .lp-nav-btn:hover { opacity:.92; }
+  .lp-nav-btn:hover { opacity:1; transform:translateY(-1px); box-shadow:0 4px 12px rgba(109,52,207,.3); }
   .lp-nav-right { display:flex; align-items:center; gap:24px; }
   .lp-nav-links { display:flex; gap:24px; }
   .lp-nav-links a { font-size:14px; font-weight:500; color:var(--text-2); cursor:pointer; text-decoration:none; }
   .lp-nav-links a:hover { color:var(--accent); }
 
   .lp-wrap { max-width:1000px; margin:0 auto; }
-  .lp-hero { text-align:center; padding:78px 24px 60px; }
+  .lp-hero { position:relative; text-align:center; padding:60px 24px 60px; }
+  .lp-hero::before {
+    content:''; position:absolute; top:-60px; left:50%; transform:translateX(-50%);
+    width:min(880px,94vw); height:480px;
+    background:radial-gradient(ellipse 50% 50% at 50% 50%, rgba(109,52,207,.11), rgba(109,52,207,0) 72%);
+    pointer-events:none; z-index:0;
+  }
+  .lp-hero > * { position:relative; z-index:1; }
+  .lp-eyebrow-pill {
+    display:inline-flex; align-items:center; gap:7px; background:var(--accent-dim); color:var(--accent);
+    font-size:13px; font-weight:600; padding:6px 14px; border-radius:999px; margin-bottom:22px;
+  }
   .lp-hero h1 {
     font-size:46px; font-weight:700; line-height:1.08; letter-spacing:-.025em;
     color:var(--text); max-width:780px; margin:0 auto 20px;
@@ -517,13 +530,15 @@
   .lp-btn-primary {
     background:var(--accent); color:#fff; padding:14px 28px; border-radius:10px;
     font-size:15px; font-weight:600; border:none; cursor:pointer; font-family:var(--font);
+    box-shadow:0 4px 14px rgba(109,52,207,.25); transition:transform .15s, box-shadow .15s, opacity .15s;
   }
-  .lp-btn-primary:hover { opacity:.92; }
+  .lp-btn-primary:hover { opacity:1; transform:translateY(-1px); box-shadow:0 8px 22px rgba(109,52,207,.34); }
   .lp-btn-ghost {
     background:var(--surface); color:var(--text); border:1px solid var(--border-strong);
     padding:14px 28px; border-radius:10px; font-size:15px; font-weight:500; cursor:pointer; font-family:var(--font);
+    transition:transform .15s, border-color .15s, color .15s;
   }
-  .lp-btn-ghost:hover { border-color:var(--accent); color:var(--accent); }
+  .lp-btn-ghost:hover { border-color:var(--accent); color:var(--accent); transform:translateY(-1px); }
 
   /* Hero app-preview mockup */
   .lp-preview { margin-top:48px; display:flex; justify-content:center; }
@@ -552,8 +567,13 @@
   .lp-step {
     flex:1; min-width:240px; max-width:300px; background:var(--surface);
     border:1px solid var(--border); border-radius:14px; padding:28px 24px; text-align:center;
+    transition:transform .18s, box-shadow .18s, border-color .18s;
   }
-  .lp-step-ic { font-size:32px; margin-bottom:14px; }
+  .lp-step:hover { transform:translateY(-3px); box-shadow:0 12px 30px rgba(28,22,48,.09); border-color:var(--border-strong); }
+  .lp-step-ic {
+    width:56px; height:56px; margin:0 auto 16px; border-radius:15px; background:var(--accent-dim);
+    display:flex; align-items:center; justify-content:center; font-size:26px;
+  }
   .lp-step h3 { font-size:17px; font-weight:600; margin-bottom:7px; color:var(--text); }
   .lp-step p { font-size:14px; color:var(--text-2); line-height:1.55; }
 
@@ -561,8 +581,14 @@
   .lp-price {
     flex:1; min-width:250px; max-width:320px; background:var(--surface);
     border:1px solid var(--border); border-radius:16px; padding:28px; display:flex; flex-direction:column;
+    transition:transform .18s, box-shadow .18s;
   }
-  .lp-price.featured { border:2px solid var(--accent); box-shadow:0 8px 30px rgba(109,52,207,.14); }
+  .lp-price:hover { transform:translateY(-3px); box-shadow:0 14px 34px rgba(28,22,48,.10); }
+  .lp-price.featured { border:2px solid var(--accent); box-shadow:0 10px 34px rgba(109,52,207,.16); }
+  .lp-price.featured:hover { box-shadow:0 16px 42px rgba(109,52,207,.22); }
+  .lp-feats { list-style:none; margin:2px 0 20px; padding:0; display:flex; flex-direction:column; gap:9px; flex:1; }
+  .lp-feats li { font-size:13px; color:var(--text-2); display:flex; gap:9px; align-items:flex-start; line-height:1.45; }
+  .lp-feats li::before { content:'✓'; color:var(--accent); font-weight:700; flex:none; }
   .lp-price .tag { font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--text-2); margin-bottom:10px; }
   .lp-price.featured .tag { color:var(--accent); }
   .lp-price .amt { font-size:38px; font-weight:700; color:var(--text); line-height:1; }
@@ -3204,6 +3230,7 @@ function renderLanding() {
     </nav>
 
     <header class="lp-hero">
+      <div class="lp-eyebrow-pill">⚡ AI-powered IFS troubleshooting</div>
       <h1>Fix an IFS error in minutes.</h1>
       <p class="sub">Upload a screenshot of an IFS ERP error. We match it against 53,000+ known IFS errors and give you the exact steps to resolve it.</p>
       <div class="lp-cta-row">
@@ -3261,20 +3288,35 @@ function renderLanding() {
         <div class="lp-price">
           <div class="tag">Personal</div>
           <div class="amt">$49<span>/mo</span></div>
-          <div class="blurb">Unlimited fixes for one user. Ideal for a single IFS analyst, professional, or power user.</div>
+          <ul class="lp-feats">
+            <li>Unlimited fixes for one user</li>
+            <li>Full verified solution library</li>
+            <li>AI-assembled fixes included</li>
+            <li>Verified-or-refund guarantee</li>
+          </ul>
           <button class="lp-btn-ghost lpBuy">Get started</button>
         </div>
         <div class="lp-price featured">
           <span class="lp-pop">Most popular</span>
           <div class="tag">Company</div>
           <div class="amt">$299<span>/mo</span></div>
-          <div class="blurb">Unlimited fixes for everyone at your company — one plan for the whole team.</div>
+          <ul class="lp-feats">
+            <li>Unlimited fixes for everyone at your company</li>
+            <li>One plan for the whole team</li>
+            <li>Full verified solution library</li>
+            <li>Verified-or-refund guarantee</li>
+          </ul>
           <button class="lp-btn-primary lpBuy">Get started</button>
         </div>
         <div class="lp-price">
           <div class="tag">Pay as you go</div>
           <div class="amt">$4.99<span>/fix</span></div>
-          <div class="blurb">No subscription. Pay only when you unlock the steps for a fix.</div>
+          <ul class="lp-feats">
+            <li>No subscription</li>
+            <li>Pay only when you unlock a fix</li>
+            <li>One complete step-by-step fix</li>
+            <li>Verified-or-refund guarantee</li>
+          </ul>
           <button class="lp-btn-ghost lpBuy">Get started</button>
         </div>
       </div>
