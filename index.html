@@ -630,7 +630,7 @@
 <div id="authGate" class="auth-gate" style="display:none"></div>
 
 <script>
-const CATALOG_URL = "https://raw.githubusercontent.com/Ella-SD/ifs-error-catalog/main/IFS%20Error%20Catalog%20from%20API%20and%20SVC.csv";
+const CATALOG_URL = "https://raw.githubusercontent.com/Ella-SD/ifs-error-catalog/main/ifs_error_catalog_apps10_cloud.csv";
 
 // IFS version now lives on the company record (companies.ifs_version), set at
 // onboarding and editable by a company_admin. Values match the onboarding dropdown.
@@ -718,16 +718,30 @@ function getStaticWords(text) {
     .filter(w => w.length > 3 && !STOP_WORDS.has(w));
 }
 
-function findCatalogMatches(extractedText, topN = 5) {
+// Map an app/company IFS version label ("IFS10", "IFS Cloud", …) to the catalog's
+// IFS_VERSION token ("IFS10" / "IFSCLOUD"). Returns null when we should NOT filter
+// — unknown, "Not sure", or a version the catalog doesn't cover (e.g. Apps 9) —
+// in which case we match across all versions as a best effort.
+function catalogVersionToken(v) {
+  if (!v) return null;
+  const s = String(v).toUpperCase().replace(/[\s_-]/g, '');
+  if (s === 'IFS10' || s === 'IFSAPPS10' || s === 'APPS10') return 'IFS10';
+  if (s === 'IFSCLOUD' || s === 'CLOUD') return 'IFSCLOUD';
+  return null;
+}
+
+function findCatalogMatches(extractedText, topN = 5, version = null) {
   if (!extractedText || catalog.length === 0) return [];
 
   const extractedWords = getStaticWords(extractedText);
   if (extractedWords.length === 0) return [];
 
+  const verTok = catalogVersionToken(version);   // null => match across all versions
   const scored = [];
 
   for (const row of catalog) {
     if (!row.ERROR_TEXT) continue;
+    if (verTok && row.IFS_VERSION !== verTok) continue;   // version-aware filter
 
     const catalogWords = getStaticWords(row.ERROR_TEXT);
     if (catalogWords.length === 0) continue;
@@ -1105,7 +1119,7 @@ Respond ONLY with raw JSON (no markdown):
 
     // STEP 2: JavaScript catalog matching (no API call)
     btn.innerHTML = '<span class="spin"></span> Step 2: Searching catalog...';
-    const catalogMatches = findCatalogMatches(extracted.error_text);
+    const catalogMatches = findCatalogMatches(extracted.error_text, 5, ifsVersionSetting);
 
     // Debug: show matching info
     const catalogSample = catalog.slice(0, 2).map(r => r.ERROR_TEXT).join(' | ');
@@ -1209,8 +1223,10 @@ function confidenceLabel(conf) {
 // Surface it explicitly when a non-IFS-10 version was detected on screen, rather
 // than folding it silently into a generic "no match".
 function versionMismatchBanner(hint) {
-  if (!hint || /10\b/.test(hint)) return '';
-  return `<div style="background:var(--warning-dim);border:1px solid var(--warning);border-radius:8px;padding:10px 12px;margin-bottom:10px;font-size:12px;color:var(--warning)">⚠️ This looks like <b>${escHtml(hint)}</b>, but our catalog currently covers <b>IFS 10</b> only — that mismatch is the most likely reason for a weak or missing match, not necessarily a wrong error.</div>`;
+  // Catalog now covers IFS 10 and IFS Cloud. Only warn when the screen clearly
+  // shows a version we don't cover (e.g. Apps 9 or older).
+  if (!hint || /10\b/.test(hint) || /cloud/i.test(hint)) return '';
+  return `<div style="background:var(--warning-dim);border:1px solid var(--warning);border-radius:8px;padding:10px 12px;margin-bottom:10px;font-size:12px;color:var(--warning)">⚠️ This looks like <b>${escHtml(hint)}</b>, but our catalog currently covers <b>IFS 10 and IFS Cloud</b> — that mismatch is the most likely reason for a weak or missing match, not necessarily a wrong error.</div>`;
 }
 
 function renderResult(extracted, catalogMatch, libMatch, debugInfo) {
@@ -1224,7 +1240,7 @@ function renderResult(extracted, catalogMatch, libMatch, debugInfo) {
     </div>
     <div class="extracted-box">${escHtml(extracted.error_text)}</div>
     ${extracted.screen_name ? `<div style="font-size:11px;color:var(--text-3);margin-bottom:4px">📍 Screen: <b style="color:var(--text-2)">${escHtml(extracted.screen_name)}</b></div>` : ''}
-    ${extracted.ifs_version_hint ? `<div style="font-size:11px;color:var(--text-3);margin-bottom:4px">🏷️ Version/environment seen on screen: <b style="color:var(--text-2)">${escHtml(extracted.ifs_version_hint)}</b> <span style="color:var(--text-3)">(catalog only covers IFS 10)</span></div>` : ''}
+    ${extracted.ifs_version_hint ? `<div style="font-size:11px;color:var(--text-3);margin-bottom:4px">🏷️ Version/environment seen on screen: <b style="color:var(--text-2)">${escHtml(extracted.ifs_version_hint)}</b> <span style="color:var(--text-3)">(catalog covers IFS 10 &amp; Cloud)</span></div>` : ''}
     ${activityContext ? `<div style="font-size:11px;color:var(--text-3);margin-bottom:12px">🎯 User was trying to: <b style="color:var(--text-2)">${escHtml(activityContext)}</b></div>` : ''}
   `;
 
@@ -2600,7 +2616,7 @@ function runSearch() {
   // 2. Fuzzy match against the raw catalog error text — same word-overlap engine used
   //    for screenshot OCR, so a rough paraphrase of the actual IFS message still matches
   //    even if the user doesn't know it's a "code" at all.
-  const fuzzyCatalog = findCatalogMatches(qRaw, 20).filter(m => m.score >= 0.25);
+  const fuzzyCatalog = findCatalogMatches(qRaw, 20, ifsVersionSetting).filter(m => m.score >= 0.25);
   const fuzzyCodes = new Set(fuzzyCatalog.map(m => m.row.ERROR_CODE));
   const fuzzyLibHits = library.filter(l => isLiveSolution(l) && fuzzyCodes.has(l.error_code));
 
@@ -3232,7 +3248,7 @@ function renderLanding() {
     <header class="lp-hero">
       <div class="lp-eyebrow-pill">⚡ AI-powered IFS troubleshooting</div>
       <h1>Fix an IFS error in minutes.</h1>
-      <p class="sub">Upload a screenshot of an IFS ERP error. We match it against 53,000+ known IFS errors and give you the exact steps to resolve it.</p>
+      <p class="sub">Upload a screenshot of an IFS ERP error. We match it against 42,000+ known IFS errors — across Apps 10 and Cloud — and give you the exact steps to resolve it.</p>
       <div class="lp-cta-row">
         <button class="lp-btn-primary" id="lpStart">Get started</button>
         <button class="lp-btn-ghost" id="lpHow">See how it works</button>
@@ -3265,7 +3281,7 @@ function renderLanding() {
 
     <section class="lp-trust">
       <div class="lp-section lp-wrap lp-trust-row" style="padding-top:34px;padding-bottom:34px">
-        <div class="lp-stat"><div class="big">53,703</div><div class="lbl">known IFS errors catalogued</div></div>
+        <div class="lp-stat"><div class="big">42,742</div><div class="lbl">IFS errors catalogued — Apps 10 &amp; Cloud</div></div>
         <div class="lp-stat"><div class="big">Verified — or free</div><div class="lbl">a verified fix, or your money back</div></div>
         <div class="lp-stat"><div class="big">Expert help</div><div class="lbl">a consultant marketplace when you're stuck</div></div>
       </div>
