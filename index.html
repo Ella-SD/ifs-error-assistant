@@ -3442,11 +3442,11 @@ function renderOnboarding(msg) {
   gate.innerHTML = `
     <div class="auth-card">
       <img src="assets/logo.png" class="auth-logo-img" alt="IFSGURU">
-      <div class="auth-title">Set up your company</div>
+      <div class="auth-title">Set up your account</div>
       <div class="auth-sub">Signed in as ${escHtml(authUser.email)}</div>
       <div class="auth-field">
-        <label>Company name</label>
-        <input id="obCompany" placeholder="e.g. Acme Manufacturing">
+        <label>Company / organization <span style="color:var(--text-3);font-weight:400">(optional)</span></label>
+        <input id="obCompany" placeholder="e.g. Acme Manufacturing — leave blank if you're independent">
       </div>
       <div class="auth-field">
         <label>IFS version</label>
@@ -3454,7 +3454,7 @@ function renderOnboarding(msg) {
           ${IFS_VERSION_DB_OPTIONS.map(v => `<option value="${v}">${v}</option>`).join('')}
         </select>
       </div>
-      <button class="auth-btn" id="obCreate">Create company</button>
+      <button class="auth-btn" id="obCreate">Continue</button>
       <div id="authMsg"></div>
       <div class="auth-toggle">Were you invited to an existing company? <a id="obInvite">Accept invite</a></div>
       <div class="auth-toggle"><a id="obSignout">Sign out</a></div>
@@ -3468,10 +3468,12 @@ function renderOnboarding(msg) {
 async function handleCreateCompany() {
   const name = document.getElementById('obCompany').value.trim();
   const version = document.getElementById('obVersion').value;
-  if (!name) return showAuthMsg('Enter a company name.');
-  const btn = document.getElementById('obCreate'); btn.disabled = true; btn.textContent = 'Creating…';
-  const { error } = await sb.rpc('create_company_and_join', { p_company_name: name, p_ifs_version: version });
-  if (error) { btn.disabled = false; btn.textContent = 'Create company'; return showAuthMsg(error.message); }
+  // Company/organization is optional — independent analysts/contractors aren't tied
+  // to an employer. If blank, default the workspace name to the user's email handle.
+  const finalName = name || (authUser.email.split('@')[0] || 'Personal');
+  const btn = document.getElementById('obCreate'); btn.disabled = true; btn.textContent = 'Setting up…';
+  const { error } = await sb.rpc('create_company_and_join', { p_company_name: finalName, p_ifs_version: version });
+  if (error) { btn.disabled = false; btn.textContent = 'Continue'; return showAuthMsg(error.message); }
   profile = null; company = null;   // force reload
   boot();
 }
