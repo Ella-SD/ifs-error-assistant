@@ -1576,15 +1576,13 @@ function catalogModuleFor(errorCode) {
   return row ? row.COMPONENT_NAME : null;
 }
 
-// 👎 path: capture optional context, show the consent note, then escalate.
+// 👎 path: capture optional context, then escalate for a specialist quote.
 function showEscalationForm(resolutionId, refundable, rowEl, errorCode) {
   if (!rowEl) return;
-  // Subscribers (nothing charged on reveal) pre-consent to the $4.99 consultant
-  // charge here; PAYG already paid it on the original unlock, so no new charge.
-  const intro = refundable
-    ? `Sorry that didn't solve it. A specialist can review this — you'll get a verified fix or a full refund.`
-    : `Sorry that didn't solve it. A specialist can take this for <b>$4.99</b> — charged only if a specialist accepts it. If they can't resolve it, you'll get a full refund of that charge.`;
-  const btnLabel = refundable ? 'Request a review' : 'Request a review — $4.99 if accepted';
+  // Quote-first: escalation charges nothing. An IFS specialist reviews the issue
+  // and sends a price; the user is only charged if/when they approve that quote.
+  const intro = `Sorry that didn't solve it. We'll have an IFS specialist review this and send you a quote — you're not charged anything until you approve it.`;
+  const btnLabel = 'Request a specialist review';
   rowEl.innerHTML = `
     <div style="flex:1">
       <div style="font-size:12px;color:var(--text-2);margin-bottom:6px">${intro}</div>
@@ -1604,12 +1602,12 @@ async function submitEscalation(resolutionId, refundable, btn, rowEl, errorCode)
   btn.innerHTML = '<span class="spin"></span> Submitting…';
   const { error } = await sb.rpc('escalate_resolution', { p_resolution_id: resolutionId, p_context: ctx, p_module: catalogModuleFor(errorCode) });
   if (error) {
-    btn.disabled = false; btn.innerHTML = 'Request a review';
+    btn.disabled = false; btn.innerHTML = 'Request a specialist review';
     const errEl = document.getElementById('escErr_' + resolutionId);
     if (errEl) errEl.textContent = error.message || 'Could not submit — try again.';
     return;
   }
-  rowEl.innerHTML = `<span style="font-size:12px;color:var(--success)">✓ Escalated. A specialist will review this — ${refundable ? "you'll get a verified fix or a full refund." : "$4.99 is charged only if one accepts it, and refunded in full if they can't resolve it."}</span>`;
+  rowEl.innerHTML = `<span style="font-size:12px;color:var(--success)">✓ Sent. An IFS specialist will review this and send you a quote — you'll see it under "My fixes." You're not charged until you approve it.</span>`;
 }
 
 // ── ADMIN ESCALATIONS QUEUE ────────────────────────────────────
@@ -1700,14 +1698,21 @@ async function resolveEscalation(resolutionId, refunded) {
 async function renderMyFixes() {
   const el = document.getElementById('tab-myfixes');
   el.innerHTML = `<div class="card"><div class="empty"><span class="spin"></span> Loading your fixes…</div></div>`;
-  const [{ data, error }, priced] = await Promise.all([sb.rpc('my_resolutions'), sb.rpc('my_priced_jobs')]);
+  const [{ data, error }, priced, openJ] = await Promise.all([sb.rpc('my_resolutions'), sb.rpc('my_priced_jobs'), sb.rpc('my_open_jobs')]);
   if (error) { el.innerHTML = `<div class="card"><div class="empty">Couldn't load your fixes: ${escHtml(error.message || '')}</div></div>`; return; }
   const rows = (data || []).filter(r => Array.isArray(r.steps) && r.steps.length);
   const quotes = (priced && !priced.error) ? (priced.data || []) : [];
-  if (!rows.length && !quotes.length) {
+  const pending = (openJ && !openJ.error) ? (openJ.data || []) : [];
+  if (!rows.length && !quotes.length && !pending.length) {
     el.innerHTML = `<div class="card"><div class="empty"><div class="empty-icon">💾</div>No unlocked fixes yet. Fixes you view or purchase will appear here so you can re-open them anytime — no re-charge.</div></div>`;
     return;
   }
+  const pendingHtml = pending.length ? `
+    <div class="card" style="border:1px solid var(--warning)">
+      <div class="card-title" style="margin-bottom:2px;color:var(--warning)">Specialist review in progress</div>
+      <div style="font-size:12px;color:var(--text-3);margin-bottom:12px">You escalated ${pending.length === 1 ? 'an issue' : 'these issues'} for a specialist to review. They'll send you a quote here — you're not charged until you approve it.</div>
+      ${pending.map(pendingJobCard).join('')}
+    </div>` : '';
   const quotesHtml = quotes.length ? `
     <div class="card" style="border:1px solid var(--accent)">
       <div class="card-title" style="margin-bottom:2px;color:var(--accent)">Awaiting your approval</div>
@@ -1720,7 +1725,7 @@ async function renderMyFixes() {
       <div style="font-size:12px;color:var(--text-3);margin-bottom:12px">Fixes you've unlocked. Re-open any of them here anytime — you won't be charged again, and you'll see exactly the steps you were originally given.</div>
       ${rows.map(myFixCard).join('')}
     </div>` : '';
-  el.innerHTML = quotesHtml + fixesHtml;
+  el.innerHTML = pendingHtml + quotesHtml + fixesHtml;
   el.querySelectorAll('[data-fix-toggle]').forEach(b => b.addEventListener('click', () => {
     const box = document.getElementById('fixSteps_' + b.dataset.fixToggle);
     if (!box) return;
@@ -1744,6 +1749,22 @@ async function renderMyFixes() {
     if (error) { document.getElementById('quoteMsg_' + b.dataset.declineJob).textContent = error.message; b.disabled = false; return; }
     renderMyFixes();
   }));
+}
+
+// A job the user escalated that no specialist has quoted yet. Past the
+// no-specialist window (job_open_timeout_hours, 48h) we stop promising silently
+// and say it's taking longer than usual (launch-blocker #1).
+const OPEN_JOB_TIMEOUT_HOURS = 48;
+function pendingJobCard(q) {
+  const hrs = (Date.now() - new Date(q.created_at).getTime()) / 3600000;
+  const stale = hrs >= OPEN_JOB_TIMEOUT_HOURS;
+  const status = stale
+    ? `⏳ This is taking longer than usual — we're still trying to match you with a specialist for this one. If we can't, you won't be charged anything.`
+    : `🔎 A specialist is reviewing this. You'll get a quote here, usually within a couple of days.`;
+  return `<div style="border-bottom:1px solid var(--border);padding:12px 0">
+    <div style="font-size:13px;font-weight:600">${escHtml(q.error_code || 'Your issue')}${q.module ? ` <span style="font-size:11px;color:var(--text-3);font-weight:400">· ${escHtml(q.module)}</span>` : ''}</div>
+    <div style="font-size:12px;color:var(--text-2);margin:3px 0 6px">${escHtml(q.error_text || '')}</div>
+    <div style="font-size:12px;color:${stale ? 'var(--warning)' : 'var(--text-3)'}">${status}</div></div>`;
 }
 
 function pricedJobCard(q) {
@@ -1940,8 +1961,7 @@ function consultantOpenJobCard(j) {
     <div style="font-size:12px;color:var(--text)">${escHtml(j.error_text || '')}</div>
     ${j.activity ? `<div style="font-size:11px;color:var(--text-2);margin-top:4px">🗣️ ${escHtml(j.activity)}</div>` : ''}
     <div class="btn-row" style="margin-top:8px">
-      <button class="btn btn-primary" style="font-size:12px" data-accept="${j.job_id}">✓ Accept — $${(j.base_price_cents / 100).toFixed(2)}</button>
-      <button class="btn btn-ghost" style="font-size:12px" data-propose="${j.job_id}" data-base="${j.base_price_cents}">Propose a price</button></div>
+      <button class="btn btn-primary" style="font-size:12px" data-propose="${j.job_id}" data-base="${j.base_price_cents}">Send a quote</button></div>
     <div id="proposeBox_${j.job_id}"></div>
     <div id="jobMsg_${j.job_id}" style="font-size:11px;color:var(--danger);margin-top:4px"></div></div>`;
 }
@@ -1957,8 +1977,8 @@ function consultantMyJobCard(j) {
     ${j.state === 'in_progress' ? `<div id="submit_${j.job_id}" style="margin-top:8px"><button class="btn btn-primary" style="font-size:12px" data-submitform="${j.job_id}">Submit fix</button></div>` : ''}</div>`;
 }
 
-// POST to the consultant-charge endpoint. mode 'accept' (Track A) claims + charges
-// the owner base−paid; mode 'pay' (Track B) charges the owner proposed−paid.
+// POST to the consultant-charge endpoint. Quote-first uses mode 'pay' only: the
+// owner approves a specialist's quote and is charged (proposed − already-paid).
 async function consultantJobCharge(jobId, mode) {
   try {
     const resp = await fetch('https://ifs-error-assistant-proxy.vercel.app/api/billing/consultant-charge', {
@@ -1966,6 +1986,19 @@ async function consultantJobCharge(jobId, mode) {
     });
     const data = await resp.json();
     if (data.error) return { error: data.error.message || 'Payment failed.' };
+    return { ok: true, data };
+  } catch (e) { return { error: e.message || 'Network error.' }; }
+}
+
+// POST to the consultant-refund endpoint (admin only). Refunds the owner's card
+// on Stripe and closes the job as refunded (reverses the consultant's credit).
+async function consultantJobRefund(jobId) {
+  try {
+    const resp = await fetch('https://ifs-error-assistant-proxy.vercel.app/api/billing/consultant-refund', {
+      method: 'POST', headers: await authedHeaders(), body: JSON.stringify({ job_id: jobId })
+    });
+    const data = await resp.json();
+    if (data.error) return { error: data.error.message || 'Refund failed.' };
     return { ok: true, data };
   } catch (e) { return { error: e.message || 'Network error.' }; }
 }
@@ -1981,16 +2014,8 @@ function wireConsultantActions(el) {
     if (error) { document.getElementById('cashoutMsg').textContent = error.message; cob.disabled = false; cob.textContent = '💸 Request cash-out'; return; }
     await loadConsultantProfile(); renderConsultant();
   });
-  el.querySelectorAll('[data-accept]').forEach(b => b.addEventListener('click', async () => {
-    // Accept goes through the billing endpoint: it claims the job AND charges the
-    // owner (base − already-paid: $0 for PAYG, $4.99 for a subscriber).
-    b.disabled = true; b.textContent = 'Accepting…';
-    const res = await consultantJobCharge(b.dataset.accept, 'accept');
-    if (res.error) { document.getElementById('jobMsg_' + b.dataset.accept).textContent = res.error; b.disabled = false; b.textContent = '✓ Accept'; return; }
-    renderConsultant();
-  }));
   el.querySelectorAll('[data-propose]').forEach(b => b.addEventListener('click', () => {
-    const id = b.dataset.propose, base = parseInt(b.dataset.base, 10), maxC = base * 5;
+    const id = b.dataset.propose, base = parseInt(b.dataset.base, 10), maxC = base * 20;
     const box = document.getElementById('proposeBox_' + id);
     box.innerHTML = `
       <div style="margin-top:8px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">
@@ -2074,7 +2099,7 @@ function adminJobCard(j) {
       <div class="btn-row" style="margin-top:8px">
         <button class="btn btn-primary" style="font-size:11px;padding:4px 8px;background:var(--success)" data-deliver="${j.job_id}">Deliver to user</button>
         <button class="btn-danger" style="font-size:11px;padding:4px 8px" data-closejob="${j.job_id}">Reject / refund</button></div>
-      <div style="font-size:11px;color:var(--text-3);margin-top:4px">Review the fix in the Solution library first (it's PENDING_REVIEW).</div>` : ''}
+      <div style="font-size:11px;color:var(--text-3);margin-top:4px">Review the fix in the Solution library first (it's PENDING_REVIEW). Refunding returns the user's payment on Stripe automatically.</div>` : ''}
     <div id="ajobMsg_${j.job_id}" style="font-size:11px;color:var(--danger);margin-top:4px"></div></div>`;
 }
 
@@ -2107,9 +2132,18 @@ function wireMarketplaceAdmin(el) {
     renderMarketplaceAdmin();
   }));
   el.querySelectorAll('[data-closejob]').forEach(b => b.addEventListener('click', async () => {
-    const refunded = confirm('OK = refund the user (also issue the Stripe refund manually). Cancel = reject without refund.');
-    const { error } = await sb.rpc('admin_close_job', { p_job_id: b.dataset.closejob, p_refunded: refunded });
-    if (error) { document.getElementById('ajobMsg_' + b.dataset.closejob).textContent = error.message; return; }
+    const id = b.dataset.closejob, msg = document.getElementById('ajobMsg_' + id);
+    const refunded = confirm('OK = refund the user (money goes back to their card on Stripe automatically). Cancel = reject without refund.');
+    b.disabled = true;
+    if (refunded) {
+      // Option B: the endpoint issues the Stripe refund AND closes the job
+      // (reversing the consultant credit) in one action.
+      const res = await consultantJobRefund(id);
+      if (res.error) { msg.textContent = res.error; b.disabled = false; return; }
+    } else {
+      const { error } = await sb.rpc('admin_close_job', { p_job_id: id, p_refunded: false });
+      if (error) { msg.textContent = error.message; b.disabled = false; return; }
+    }
     renderMarketplaceAdmin();
   }));
 }
