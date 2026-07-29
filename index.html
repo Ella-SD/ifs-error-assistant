@@ -1579,13 +1579,19 @@ function catalogModuleFor(errorCode) {
 // 👎 path: capture optional context, show the consent note, then escalate.
 function showEscalationForm(resolutionId, refundable, rowEl, errorCode) {
   if (!rowEl) return;
+  // Subscribers (nothing charged on reveal) pre-consent to the $4.99 consultant
+  // charge here; PAYG already paid it on the original unlock, so no new charge.
+  const intro = refundable
+    ? `Sorry that didn't solve it. A specialist can review this — you'll get a verified fix or a full refund.`
+    : `Sorry that didn't solve it. A specialist can take this for <b>$4.99</b> — charged only if a specialist accepts it. If they can't resolve it, you'll get a full refund of that charge.`;
+  const btnLabel = refundable ? 'Request a review' : 'Request a review — $4.99 if accepted';
   rowEl.innerHTML = `
     <div style="flex:1">
-      <div style="font-size:12px;color:var(--text-2);margin-bottom:6px">Sorry that didn't solve it. A specialist can review this for you.</div>
+      <div style="font-size:12px;color:var(--text-2);margin-bottom:6px">${intro}</div>
       <textarea id="escCtx_${resolutionId}" rows="2" placeholder="Optional: what were you trying to do / what went wrong? (helps the specialist)"
         style="width:100%;box-sizing:border-box;background:var(--surface-2);border:1px solid var(--border-strong);border-radius:8px;padding:8px 10px;font-size:12px;color:var(--text);font-family:inherit"></textarea>
       <div style="font-size:11px;color:var(--text-3);margin:6px 0 8px">🔒 By requesting a review, a specialist will see this error to help resolve it.</div>
-      <button class="btn btn-primary" style="font-size:12px" id="escBtn_${resolutionId}">Request a review</button>
+      <button class="btn btn-primary" style="font-size:12px" id="escBtn_${resolutionId}">${btnLabel}</button>
       <div id="escErr_${resolutionId}" style="font-size:11px;color:var(--danger);margin-top:6px"></div>
     </div>`;
   document.getElementById('escBtn_' + resolutionId)
@@ -1603,7 +1609,7 @@ async function submitEscalation(resolutionId, refundable, btn, rowEl, errorCode)
     if (errEl) errEl.textContent = error.message || 'Could not submit — try again.';
     return;
   }
-  rowEl.innerHTML = `<span style="font-size:12px;color:var(--success)">✓ Escalated. A specialist will review this — ${refundable ? "you'll get a verified fix or a full refund." : "we'll get you a verified fix."}</span>`;
+  rowEl.innerHTML = `<span style="font-size:12px;color:var(--success)">✓ Escalated. A specialist will review this — ${refundable ? "you'll get a verified fix or a full refund." : "$4.99 is charged only if one accepts it, and refunded in full if they can't resolve it."}</span>`;
 }
 
 // ── ADMIN ESCALATIONS QUEUE ────────────────────────────────────
@@ -1694,19 +1700,27 @@ async function resolveEscalation(resolutionId, refunded) {
 async function renderMyFixes() {
   const el = document.getElementById('tab-myfixes');
   el.innerHTML = `<div class="card"><div class="empty"><span class="spin"></span> Loading your fixes…</div></div>`;
-  const { data, error } = await sb.rpc('my_resolutions');
+  const [{ data, error }, priced] = await Promise.all([sb.rpc('my_resolutions'), sb.rpc('my_priced_jobs')]);
   if (error) { el.innerHTML = `<div class="card"><div class="empty">Couldn't load your fixes: ${escHtml(error.message || '')}</div></div>`; return; }
   const rows = (data || []).filter(r => Array.isArray(r.steps) && r.steps.length);
-  if (!rows.length) {
+  const quotes = (priced && !priced.error) ? (priced.data || []) : [];
+  if (!rows.length && !quotes.length) {
     el.innerHTML = `<div class="card"><div class="empty"><div class="empty-icon">💾</div>No unlocked fixes yet. Fixes you view or purchase will appear here so you can re-open them anytime — no re-charge.</div></div>`;
     return;
   }
-  el.innerHTML = `
+  const quotesHtml = quotes.length ? `
+    <div class="card" style="border:1px solid var(--accent)">
+      <div class="card-title" style="margin-bottom:2px;color:var(--accent)">Awaiting your approval</div>
+      <div style="font-size:12px;color:var(--text-3);margin-bottom:12px">A specialist quoted a price for an issue you escalated. Approve to have them start — you're charged only when you approve, and refunded in full if they can't resolve it.</div>
+      ${quotes.map(pricedJobCard).join('')}
+    </div>` : '';
+  const fixesHtml = rows.length ? `
     <div class="card">
       <div class="card-title" style="margin-bottom:2px">My fixes</div>
       <div style="font-size:12px;color:var(--text-3);margin-bottom:12px">Fixes you've unlocked. Re-open any of them here anytime — you won't be charged again, and you'll see exactly the steps you were originally given.</div>
       ${rows.map(myFixCard).join('')}
-    </div>`;
+    </div>` : '';
+  el.innerHTML = quotesHtml + fixesHtml;
   el.querySelectorAll('[data-fix-toggle]').forEach(b => b.addEventListener('click', () => {
     const box = document.getElementById('fixSteps_' + b.dataset.fixToggle);
     if (!box) return;
@@ -1718,6 +1732,29 @@ async function renderMyFixes() {
     const r = rows.find(x => x.id === b.dataset.fixDl);
     if (r) downloadSteps(r.solution_title || r.error_code || 'ifs-fix', r.who_acts || '—', r.steps || []);
   }));
+  el.querySelectorAll('[data-approve-job]').forEach(b => b.addEventListener('click', async () => {
+    b.disabled = true; b.textContent = 'Processing…';
+    const res = await consultantJobCharge(b.dataset.approveJob, 'pay');
+    if (res.error) { document.getElementById('quoteMsg_' + b.dataset.approveJob).textContent = res.error; b.disabled = false; b.textContent = 'Approve & pay'; return; }
+    renderMyFixes();
+  }));
+  el.querySelectorAll('[data-decline-job]').forEach(b => b.addEventListener('click', async () => {
+    b.disabled = true;
+    const { error } = await sb.rpc('respond_to_price', { p_job_id: b.dataset.declineJob, p_accept: false });
+    if (error) { document.getElementById('quoteMsg_' + b.dataset.declineJob).textContent = error.message; b.disabled = false; return; }
+    renderMyFixes();
+  }));
+}
+
+function pricedJobCard(q) {
+  return `<div style="border-bottom:1px solid var(--border);padding:12px 0">
+    <div style="font-size:13px;font-weight:600">${escHtml(q.error_code || 'Your issue')}${q.module ? ` <span style="font-size:11px;color:var(--text-3);font-weight:400">· ${escHtml(q.module)}</span>` : ''}</div>
+    <div style="font-size:12px;color:var(--text-2);margin:3px 0 8px">${escHtml(q.error_text || '')}</div>
+    <div style="font-size:12px;color:var(--text);margin-bottom:8px">A specialist can resolve this for <b>$${(q.proposed_price_cents / 100).toFixed(2)}</b>.${q.already_paid_cents > 0 ? ` You've already paid $${(q.already_paid_cents / 100).toFixed(2)} toward it.` : ''}</div>
+    <div class="btn-row">
+      <button class="btn btn-primary" style="font-size:12px" data-approve-job="${q.job_id}">Approve &amp; pay $${(q.pay_now_cents / 100).toFixed(2)}</button>
+      <button class="btn btn-ghost" style="font-size:12px" data-decline-job="${q.job_id}">Decline</button></div>
+    <div id="quoteMsg_${q.job_id}" style="font-size:11px;color:var(--danger);margin-top:4px"></div></div>`;
 }
 
 function myFixCard(r) {
@@ -1903,7 +1940,9 @@ function consultantOpenJobCard(j) {
     <div style="font-size:12px;color:var(--text)">${escHtml(j.error_text || '')}</div>
     ${j.activity ? `<div style="font-size:11px;color:var(--text-2);margin-top:4px">🗣️ ${escHtml(j.activity)}</div>` : ''}
     <div class="btn-row" style="margin-top:8px">
-      <button class="btn btn-primary" style="font-size:12px" data-accept="${j.job_id}">✓ Accept — $${(j.base_price_cents / 100).toFixed(2)}</button></div>
+      <button class="btn btn-primary" style="font-size:12px" data-accept="${j.job_id}">✓ Accept — $${(j.base_price_cents / 100).toFixed(2)}</button>
+      <button class="btn btn-ghost" style="font-size:12px" data-propose="${j.job_id}" data-base="${j.base_price_cents}">Propose a price</button></div>
+    <div id="proposeBox_${j.job_id}"></div>
     <div id="jobMsg_${j.job_id}" style="font-size:11px;color:var(--danger);margin-top:4px"></div></div>`;
 }
 
@@ -1918,6 +1957,19 @@ function consultantMyJobCard(j) {
     ${j.state === 'in_progress' ? `<div id="submit_${j.job_id}" style="margin-top:8px"><button class="btn btn-primary" style="font-size:12px" data-submitform="${j.job_id}">Submit fix</button></div>` : ''}</div>`;
 }
 
+// POST to the consultant-charge endpoint. mode 'accept' (Track A) claims + charges
+// the owner base−paid; mode 'pay' (Track B) charges the owner proposed−paid.
+async function consultantJobCharge(jobId, mode) {
+  try {
+    const resp = await fetch('https://ifs-error-assistant-proxy.vercel.app/api/billing/consultant-charge', {
+      method: 'POST', headers: await authedHeaders(), body: JSON.stringify({ job_id: jobId, mode })
+    });
+    const data = await resp.json();
+    if (data.error) return { error: data.error.message || 'Payment failed.' };
+    return { ok: true, data };
+  } catch (e) { return { error: e.message || 'Network error.' }; }
+}
+
 function wireConsultantActions(el) {
   const emb = el.querySelector('#editModulesBtn');
   if (emb) emb.addEventListener('click', editConsultantModules);
@@ -1930,10 +1982,33 @@ function wireConsultantActions(el) {
     await loadConsultantProfile(); renderConsultant();
   });
   el.querySelectorAll('[data-accept]').forEach(b => b.addEventListener('click', async () => {
+    // Accept goes through the billing endpoint: it claims the job AND charges the
+    // owner (base − already-paid: $0 for PAYG, $4.99 for a subscriber).
     b.disabled = true; b.textContent = 'Accepting…';
-    const { error } = await sb.rpc('accept_job', { p_job_id: b.dataset.accept });
-    if (error) { document.getElementById('jobMsg_' + b.dataset.accept).textContent = error.message; b.disabled = false; return; }
+    const res = await consultantJobCharge(b.dataset.accept, 'accept');
+    if (res.error) { document.getElementById('jobMsg_' + b.dataset.accept).textContent = res.error; b.disabled = false; b.textContent = '✓ Accept'; return; }
     renderConsultant();
+  }));
+  el.querySelectorAll('[data-propose]').forEach(b => b.addEventListener('click', () => {
+    const id = b.dataset.propose, base = parseInt(b.dataset.base, 10), maxC = base * 5;
+    const box = document.getElementById('proposeBox_' + id);
+    box.innerHTML = `
+      <div style="margin-top:8px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+        <span style="font-size:12px;color:var(--text-2)">Your price&nbsp;$</span>
+        <input id="propAmt_${id}" type="number" min="${(base/100).toFixed(2)}" max="${(maxC/100).toFixed(2)}" step="0.01" value="${(base/100).toFixed(2)}"
+          style="width:84px;background:var(--surface-2);border:1px solid var(--border-strong);border-radius:8px;padding:6px 8px;font-size:12px;color:var(--text)">
+        <button class="btn btn-primary" style="font-size:12px" data-doprop="${id}">Send quote</button>
+        <span style="font-size:11px;color:var(--text-3)">$${(base/100).toFixed(2)}–$${(maxC/100).toFixed(2)}</span>
+      </div>`;
+    box.querySelector('[data-doprop]').addEventListener('click', async (e) => {
+      const cents = Math.round(parseFloat(document.getElementById('propAmt_' + id).value) * 100);
+      const msg = document.getElementById('jobMsg_' + id);
+      if (!(cents >= base && cents <= maxC)) { msg.textContent = `Price must be between $${(base/100).toFixed(2)} and $${(maxC/100).toFixed(2)}.`; return; }
+      e.currentTarget.disabled = true; e.currentTarget.textContent = 'Sending…';
+      const { error } = await sb.rpc('propose_job_price', { p_job_id: id, p_price_cents: cents });
+      if (error) { msg.textContent = error.message; e.currentTarget.disabled = false; e.currentTarget.textContent = 'Send quote'; return; }
+      renderConsultant();
+    });
   }));
   el.querySelectorAll('[data-submitform]').forEach(b => b.addEventListener('click', () => {
     const id = b.dataset.submitform;
