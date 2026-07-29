@@ -3183,15 +3183,17 @@ function renderUpgrade(targetEl) {
       <div class="plan-grid">
         <div class="plan-card">
           <div class="plan-name">Personal</div>
-          <div class="plan-price">$49<span>/mo</span></div>
-          <div class="plan-desc">Unlimited resolutions for you.</div>
+          <div class="plan-price">$29<span>/mo</span></div>
+          <div style="font-size:11px;color:var(--accent);font-weight:600;margin-bottom:4px">$19 first month</div>
+          <div class="plan-desc">Unlimited automated resolutions for you.</div>
           <button class="btn btn-primary" id="planPersonal">Subscribe</button>
         </div>
         ${canCompany ? `
         <div class="plan-card">
           <div class="plan-name">Company</div>
-          <div class="plan-price">$299<span>/mo</span></div>
-          <div class="plan-desc">Covers everyone at ${escHtml(company ? company.name : 'your company')}.</div>
+          <div class="plan-price">$799<span>/mo</span></div>
+          <div style="font-size:11px;color:var(--text-3);margin-bottom:4px">up to 20 seats</div>
+          <div class="plan-desc">Covers up to 20 people at ${escHtml(company ? company.name : 'your company')}. Need more? <a href="mailto:support@ifsguru.com?subject=Enterprise%20pricing" style="color:var(--accent)">Contact us</a>.</div>
           <button class="btn btn-primary" id="planCompany">Subscribe</button>
         </div>` : ''}
         <div class="plan-card">
@@ -3246,7 +3248,7 @@ function renderLanding() {
     </nav>
 
     <header class="lp-hero">
-      <div class="lp-eyebrow-pill">⚡ AI-powered IFS troubleshooting</div>
+      <div class="lp-eyebrow-pill">✓ Verified IFS fixes — Apps 10 &amp; Cloud</div>
       <h1>Fix an IFS error in minutes.</h1>
       <p class="sub">Upload a screenshot of an IFS ERP error. We match it against 42,000+ known IFS errors — across Apps 10 and Cloud — and give you the exact steps to resolve it.</p>
       <div class="lp-cta-row">
@@ -3301,28 +3303,30 @@ function renderLanding() {
       <div class="lp-eyebrow">Pricing</div>
       <h2 class="lp-h2">Simple, transparent pricing</h2>
       <div class="lp-price-grid">
-        <div class="lp-price">
+        <div class="lp-price featured">
+          <span class="lp-pop">Most popular</span>
           <div class="tag">Personal</div>
-          <div class="amt">$49<span>/mo</span></div>
+          <div class="amt">$29<span>/mo</span></div>
+          <div style="font-size:12px;color:var(--accent);font-weight:600;margin:5px 0 2px">$19 for your first month</div>
           <ul class="lp-feats">
-            <li>Unlimited fixes for one user</li>
-            <li>Full verified solution library</li>
+            <li>Unlimited automated fixes for one user</li>
+            <li>Full verified library — Apps 10 &amp; Cloud</li>
             <li>AI-assembled fixes included</li>
             <li>Verified-or-refund guarantee</li>
           </ul>
-          <button class="lp-btn-ghost lpBuy">Get started</button>
+          <button class="lp-btn-primary lpBuy">Get started</button>
         </div>
-        <div class="lp-price featured">
-          <span class="lp-pop">Most popular</span>
+        <div class="lp-price">
           <div class="tag">Company</div>
-          <div class="amt">$299<span>/mo</span></div>
+          <div class="amt">$799<span>/mo</span></div>
+          <div style="font-size:12px;color:var(--text-3);margin:5px 0 2px">up to 20 seats</div>
           <ul class="lp-feats">
-            <li>Unlimited fixes for everyone at your company</li>
-            <li>One plan for the whole team</li>
-            <li>Full verified solution library</li>
+            <li>Everything in Personal, for your team</li>
+            <li>Up to 20 users included</li>
+            <li>Full verified library — Apps 10 &amp; Cloud</li>
             <li>Verified-or-refund guarantee</li>
           </ul>
-          <button class="lp-btn-primary lpBuy">Get started</button>
+          <button class="lp-btn-ghost lpBuy">Get started</button>
         </div>
         <div class="lp-price">
           <div class="tag">Pay as you go</div>
@@ -3335,6 +3339,10 @@ function renderLanding() {
           </ul>
           <button class="lp-btn-ghost lpBuy">Get started</button>
         </div>
+      </div>
+      <div style="text-align:center;font-size:13px;color:var(--text-3);margin-top:22px;line-height:1.6">
+        More than 20 seats? <a href="mailto:support@ifsguru.com?subject=Enterprise%20pricing%20(20%2B%20seats)" style="color:var(--accent)">Contact us</a> for enterprise pricing.<br>
+        Automated fixes are unlimited on every plan — consultant-escalated help is billed separately.
       </div>
     </section>
 
