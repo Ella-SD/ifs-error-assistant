@@ -61,6 +61,9 @@ end $$;
 grant execute on function propose_job_price(uuid, int) to authenticated;
 
 -- ── my_priced_jobs(): now also returns the quoting consultant's tier ──────────
+-- Return type changed (added consultant_tier), so drop the 0027 version first —
+-- CREATE OR REPLACE cannot alter an existing function's OUT columns.
+drop function if exists my_priced_jobs();
 create or replace function my_priced_jobs()
 returns table (job_id uuid, proposed_price_cents int, already_paid_cents int, pay_now_cents int,
                module text, error_code text, error_text text, created_at timestamptz, deadline_at timestamptz,
