@@ -37,7 +37,7 @@ begin
   if not is_platform_admin() then raise exception 'platform_admin required'; end if;
   return query
     select j.id, j.state, j.module, j.created_at,
-           cu.email, j.solution_id, s.title, s.who_acts, s.instructions, s.source, s.status,
+           cu.email, j.solution_id, s.title, s.who_acts, s.instructions, s.source::text, s.status::text,
            j.user_note, r.error_code, r.error_text, ru.email, j.proposed_price_cents
       from marketplace_jobs j
       join resolutions r on r.id = j.resolution_id
