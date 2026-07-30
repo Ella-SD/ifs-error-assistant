@@ -11,8 +11,8 @@
 -- Deliver / Refund buttons. Return type changed → drop first.
 -- ============================================================================
 
-drop function if exists admin_jobs();
-create or replace function admin_jobs()
+drop function if exists admin_jobs() cascade;
+create function admin_jobs()
 returns table (job_id uuid, state job_state, module text, created_at timestamptz,
                consultant_email text, solution_id uuid, solution_title text,
                solution_who text, solution_steps jsonb, solution_source text,
@@ -33,3 +33,6 @@ begin
      order by (j.state = 'submitted') desc, j.updated_at desc;
 end $$;
 grant execute on function admin_jobs() to authenticated;
+
+-- Refresh PostgREST so the API serves the new return columns immediately.
+notify pgrst, 'reload schema';
