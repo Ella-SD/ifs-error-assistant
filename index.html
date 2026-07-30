@@ -1692,13 +1692,14 @@ async function resolveEscalation(resolutionId, refunded) {
 async function renderMyFixes() {
   const el = document.getElementById('tab-myfixes');
   el.innerHTML = `<div class="card"><div class="empty"><span class="spin"></span> Loading your fixes…</div></div>`;
-  const [{ data, error }, priced, openJ, activeR] = await Promise.all([sb.rpc('my_resolutions'), sb.rpc('my_priced_jobs'), sb.rpc('my_open_jobs'), sb.rpc('my_active_jobs')]);
+  const [{ data, error }, priced, openJ, activeR, validR] = await Promise.all([sb.rpc('my_resolutions'), sb.rpc('my_priced_jobs'), sb.rpc('my_open_jobs'), sb.rpc('my_active_jobs'), sb.rpc('my_jobs_awaiting_validation')]);
   if (error) { el.innerHTML = `<div class="card"><div class="empty">Couldn't load your fixes: ${escHtml(error.message || '')}</div></div>`; return; }
   const rows = (data || []).filter(r => Array.isArray(r.steps) && r.steps.length);
   const quotes = (priced && !priced.error) ? (priced.data || []) : [];
   const pending = (openJ && !openJ.error) ? (openJ.data || []) : [];
-  const active = (activeR && !activeR.error) ? (activeR.data || []) : [];   // in_progress/submitted (degrades to [] pre-migration)
-  if (!rows.length && !quotes.length && !pending.length && !active.length) {
+  const active = (activeR && !activeR.error) ? (activeR.data || []) : [];   // in_progress (degrades to [] pre-migration)
+  const validate = (validR && !validR.error) ? (validR.data || []) : [];    // delivered, awaiting 👍/👎
+  if (!rows.length && !quotes.length && !pending.length && !active.length && !validate.length) {
     el.innerHTML = `<div class="card"><div class="empty"><div class="empty-icon">💾</div>No unlocked fixes yet. Fixes you view or purchase will appear here so you can re-open them anytime — no re-charge.</div></div>`;
     return;
   }
@@ -1720,13 +1721,19 @@ async function renderMyFixes() {
       <div style="font-size:12px;color:var(--text-3);margin-bottom:12px">You've approved a specialist to resolve ${active.length === 1 ? 'this issue' : 'these issues'}. They'll deliver the verified fix right here.</div>
       ${active.map(activeJobCard).join('')}
     </div>` : '';
+  const validateHtml = validate.length ? `
+    <div class="card" style="border:1px solid var(--success)">
+      <div class="card-title" style="margin-bottom:2px;color:var(--success)">Your fix is ready — did it work?</div>
+      <div style="font-size:12px;color:var(--text-3);margin-bottom:12px">A specialist delivered a fix. Try it, then let us know — if it didn't work, they'll revise it, and you're covered by a refund if it can't be resolved.</div>
+      ${validate.map(validateFixCard).join('')}
+    </div>` : '';
   const fixesHtml = rows.length ? `
     <div class="card">
       <div class="card-title" style="margin-bottom:2px">My fixes</div>
       <div style="font-size:12px;color:var(--text-3);margin-bottom:12px">Fixes you've unlocked. Re-open any of them here anytime — you won't be charged again, and you'll see exactly the steps you were originally given.</div>
       ${rows.map(myFixCard).join('')}
     </div>` : '';
-  el.innerHTML = quotesHtml + activeHtml + pendingHtml + fixesHtml;
+  el.innerHTML = validateHtml + quotesHtml + activeHtml + pendingHtml + fixesHtml;
   el.querySelectorAll('[data-fix-toggle]').forEach(b => b.addEventListener('click', () => {
     const box = document.getElementById('fixSteps_' + b.dataset.fixToggle);
     if (!box) return;
@@ -1750,6 +1757,19 @@ async function renderMyFixes() {
     if (error) { document.getElementById('quoteMsg_' + b.dataset.declineJob).textContent = error.message; b.disabled = false; return; }
     renderMyFixes();
   }));
+  el.querySelectorAll('[data-confirm-fix]').forEach(b => b.addEventListener('click', async () => {
+    b.disabled = true; b.textContent = 'Saving…';
+    const { error } = await sb.rpc('confirm_fix', { p_job_id: b.dataset.confirmFix });
+    if (error) { document.getElementById('valMsg_' + b.dataset.confirmFix).textContent = error.message; b.disabled = false; b.textContent = '👍 It worked'; return; }
+    renderMyFixes();
+  }));
+  el.querySelectorAll('[data-reject-fix]').forEach(b => b.addEventListener('click', async () => {
+    const reason = prompt('What went wrong? (optional — helps the specialist revise it)') || '';
+    b.disabled = true;
+    const { error } = await sb.rpc('reject_fix', { p_job_id: b.dataset.rejectFix, p_reason: reason });
+    if (error) { document.getElementById('valMsg_' + b.dataset.rejectFix).textContent = error.message; b.disabled = false; return; }
+    renderMyFixes();
+  }));
 }
 
 // A job the user escalated that no specialist has quoted yet. Past the
@@ -1766,6 +1786,20 @@ function pendingJobCard(q) {
     <div style="font-size:13px;font-weight:600">${escHtml(q.error_code || 'Your issue')}${q.module ? ` <span style="font-size:11px;color:var(--text-3);font-weight:400">· ${escHtml(q.module)}</span>` : ''}</div>
     <div style="font-size:12px;color:var(--text-2);margin:3px 0 6px">${escHtml(q.error_text || '')}</div>
     <div style="font-size:12px;color:${stale ? 'var(--warning)' : 'var(--text-3)'}">${status}</div></div>`;
+}
+
+// A delivered fix awaiting the user's 👍/👎. Shows the steps inline + validate buttons.
+function validateFixCard(q) {
+  const steps = Array.isArray(q.steps) ? q.steps : [];
+  return `<div style="border-bottom:1px solid var(--border);padding:12px 0">
+    <div style="font-size:13px;font-weight:600">${escHtml(q.solution_title || q.error_code || 'Your fix')}${q.module ? ` <span style="font-size:11px;color:var(--text-3);font-weight:400">· ${escHtml(q.module)}</span>` : ''}</div>
+    <div style="font-size:12px;color:var(--text-2);margin:3px 0 6px">${escHtml(q.error_text || '')}</div>
+    <div style="font-size:11px;color:var(--text-3);margin-bottom:4px">👤 ${escHtml(q.who_acts || '—')}</div>
+    <ul class="step-list" style="margin:0 0 8px">${steps.map((s, i) => `<li class="step-row"><span class="step-num">${i + 1}.</span><span class="step-text">${escHtml(s)}</span></li>`).join('')}</ul>
+    <div class="btn-row">
+      <button class="btn btn-primary" style="font-size:12px;background:var(--success)" data-confirm-fix="${q.job_id}">👍 It worked</button>
+      <button class="btn btn-ghost" style="font-size:12px" data-reject-fix="${q.job_id}">👎 Didn't work</button></div>
+    <div id="valMsg_${q.job_id}" style="font-size:11px;color:var(--danger);margin-top:4px"></div></div>`;
 }
 
 // A job the user approved+paid; a specialist is working it (in_progress) or has
@@ -1896,22 +1930,28 @@ async function renderConsultant() {
     return;
   }
   el.innerHTML = `<div class="card"><div class="empty"><span class="spin"></span> Loading jobs…</div></div>`;
-  const [openR, mineR, coR] = await Promise.all([
+  const [openR, mineR, coR, availR, pendR] = await Promise.all([
     sb.rpc('open_jobs_for_consultant'), sb.rpc('my_consultant_jobs'),
-    sb.from('cashout_requests').select('amount_cents,status').order('requested_at', { ascending: false })]);
+    sb.from('cashout_requests').select('amount_cents,status').order('requested_at', { ascending: false }),
+    sb.rpc('consultant_available_credit'), sb.rpc('consultant_pending_credit')]);
   const open = openR.data || [], mine = mineR.data || [];
+  window.consultantMine = mine;   // for prefilling a revision from the deliver form
   const pendingCashout = (coR.data || []).filter(c => c.status === 'requested').reduce((s, c) => s + c.amount_cents, 0);
-  const bal = ((consultantProfile.credit_balance_cents || 0) / 100).toFixed(2);
-  const canCashout = (consultantProfile.credit_balance_cents || 0) >= consultantCashoutMinCents;
+  // Credit is derived: available = confirmed / past-window (cashable); pending = awaiting the user.
+  const availCents = (availR && !availR.error) ? (availR.data || 0) : 0;
+  const pendCents = (pendR && !pendR.error) ? (pendR.data || 0) : 0;
+  const bal = (availCents / 100).toFixed(2);
+  const canCashout = availCents >= consultantCashoutMinCents;
   el.innerHTML = `
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
         <div><div class="card-title" style="margin-bottom:2px">Consultant</div>
           <div style="font-size:12px;color:var(--text-3)">Tier <b style="color:var(--text-2)">${escHtml(consultantProfile.tier)}</b> · Modules: ${escHtml((consultantProfile.modules || []).join(', ') || '—')}
             <button class="btn btn-ghost" id="editModulesBtn" style="font-size:10px;padding:2px 7px;margin-left:6px">✏️ Edit modules</button></div></div>
-        <div style="text-align:right"><div style="font-size:11px;color:var(--text-3)">Credit balance</div>
+        <div style="text-align:right"><div style="font-size:11px;color:var(--text-3)">Available to cash out</div>
           <div style="font-size:18px;font-weight:700;color:var(--success)">$${bal}</div>
-          ${pendingCashout ? `<div style="font-size:10px;color:var(--warning)">Pending cash-out: $${(pendingCashout / 100).toFixed(2)}</div>` : ''}
+          ${pendCents ? `<div style="font-size:10px;color:var(--text-3)">Pending user confirmation: $${(pendCents / 100).toFixed(2)}</div>` : ''}
+          ${pendingCashout ? `<div style="font-size:10px;color:var(--warning)">Cash-out requested: $${(pendingCashout / 100).toFixed(2)}</div>` : ''}
           ${canCashout ? `<button class="btn btn-ghost" id="cashoutBtn" style="font-size:11px;padding:3px 8px;margin-top:4px">💸 Request cash-out</button>` : `<div style="font-size:10px;color:var(--text-3);margin-top:2px">Min $${(consultantCashoutMinCents / 100).toFixed(2)} to cash out</div>`}
           <div id="cashoutMsg" style="font-size:10px;color:var(--danger);margin-top:2px"></div>
         </div>
@@ -1999,15 +2039,41 @@ function consultantOpenJobCard(j) {
     <div id="jobMsg_${j.job_id}" style="font-size:11px;color:var(--danger);margin-top:4px"></div></div>`;
 }
 
-const JOB_LABELS = { open:'Open', claimed:'Claimed', price_proposed:'Price proposed — awaiting user', awaiting_payment:'Awaiting user payment', in_progress:'In progress', submitted:'Submitted for review', delivered:'Delivered ✓', rejected:'Rejected', refunded:'Refunded', reopened:'Reopened', expired:'Expired' };
+const JOB_LABELS = { open:'Open', claimed:'Claimed', price_proposed:'Price proposed — awaiting user', awaiting_payment:'Awaiting user payment', in_progress:'In progress', submitted:'Submitted for review', delivered:'Delivered — awaiting confirmation', confirmed:'Confirmed ✓', revision_requested:'Revision requested', disputed:'Disputed — under review', rejected:'Rejected', refunded:'Refunded', reopened:'Reopened', expired:'Expired' };
 
 function consultantMyJobCard(j) {
+  const stepsArr = Array.isArray(j.solution_steps) ? j.solution_steps : [];
+  const note = j.user_note
+    ? `<div style="font-size:11px;color:var(--warning);margin-top:6px;background:var(--surface-2);border-radius:6px;padding:8px">🗣️ User feedback: "${escHtml(j.user_note)}"</div>` : '';
+  let action = '';
+  if (j.state === 'in_progress') {
+    action = `<div id="deliver_${j.job_id}" style="margin-top:8px"><button class="btn btn-primary" style="font-size:12px" data-deliverform="${j.job_id}">Deliver fix</button></div>`;
+  } else if (j.state === 'revision_requested') {
+    action = `${note}<div id="deliver_${j.job_id}" style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
+      <button class="btn btn-primary" style="font-size:12px" data-deliverform="${j.job_id}">Revise &amp; re-deliver</button>
+      <button class="btn btn-ghost" style="font-size:12px" data-dispute="${j.job_id}">I'm confident it works — dispute</button></div>`;
+  } else if (j.state === 'delivered') {
+    action = `<div style="font-size:11px;color:var(--text-3);margin-top:6px">Delivered — waiting for the user to confirm it worked. Your credit is pending until they confirm (or ~7 days pass).</div>`;
+  } else if (j.state === 'disputed') {
+    action = `<div style="font-size:11px;color:var(--text-3);margin-top:6px">Under admin review — we'll notify you when it's resolved.</div>`;
+  } else if (j.state === 'confirmed') {
+    action = `<div style="font-size:11px;color:var(--success);margin-top:6px">✓ Confirmed by the user — credit available to cash out.</div>`;
+  }
+  const stepsView = stepsArr.length ? `
+    <button class="btn btn-ghost" style="font-size:11px;padding:3px 9px;margin-top:8px" data-myfix="${j.job_id}">🔍 View my fix</button>
+    <div id="myfixView_${j.job_id}" style="display:none;margin-top:6px;background:var(--surface-2);border-radius:8px;padding:10px 12px">
+      ${j.solution_title ? `<div style="font-size:12px;font-weight:600;margin-bottom:2px">${escHtml(j.solution_title)}</div>` : ''}
+      <div style="font-size:11px;color:var(--text-3);margin-bottom:6px">👤 ${escHtml(j.solution_who || '—')}</div>
+      <ul class="step-list" style="margin:0">${stepsArr.map((s, i) => `<li class="step-row"><span class="step-num">${i + 1}.</span><span class="step-text">${escHtml(s)}</span></li>`).join('')}</ul>
+    </div>` : '';
   return `<div style="border-bottom:1px solid var(--border);padding:12px 0">
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:3px">
       <span class="lib-code">${escHtml(j.error_code || '—')}</span>
       <span style="font-size:10px;font-weight:600;padding:2px 7px;border-radius:999px;background:var(--surface-2);color:var(--accent)">${JOB_LABELS[j.state] || j.state}</span></div>
     <div style="font-size:12px;color:var(--text)">${escHtml(j.error_text || '')}</div>
-    ${j.state === 'in_progress' ? `<div id="submit_${j.job_id}" style="margin-top:8px"><button class="btn btn-primary" style="font-size:12px" data-submitform="${j.job_id}">Submit fix</button></div>` : ''}</div>`;
+    ${stepsView}
+    ${action}
+    <div id="djobMsg_${j.job_id}" style="font-size:11px;color:var(--danger);margin-top:4px"></div></div>`;
 }
 
 // POST to the consultant-charge endpoint. Quote-first uses mode 'pay' only: the
@@ -2068,23 +2134,41 @@ function wireConsultantActions(el) {
       renderConsultant();
     });
   }));
-  el.querySelectorAll('[data-submitform]').forEach(b => b.addEventListener('click', () => {
-    const id = b.dataset.submitform;
-    const box = document.getElementById('submit_' + id);
+  el.querySelectorAll('[data-myfix]').forEach(b => b.addEventListener('click', () => {
+    const box = document.getElementById('myfixView_' + b.dataset.myfix);
+    if (!box) return;
+    const open = box.style.display !== 'none';
+    box.style.display = open ? 'none' : 'block';
+    b.textContent = open ? '🔍 View my fix' : '🔍 Hide my fix';
+  }));
+  el.querySelectorAll('[data-dispute]').forEach(b => b.addEventListener('click', async () => {
+    if (!confirm("Dispute this rejection? An admin will review your fix and the user's feedback.")) return;
+    const note = prompt('Optional: briefly why you believe the fix is correct (the admin will see this).') || '';
+    b.disabled = true; b.textContent = 'Submitting…';
+    const { error } = await sb.rpc('raise_dispute', { p_job_id: b.dataset.dispute, p_note: note });
+    if (error) { document.getElementById('djobMsg_' + b.dataset.dispute).textContent = error.message; b.disabled = false; b.textContent = "I'm confident it works — dispute"; return; }
+    renderConsultant();
+  }));
+  el.querySelectorAll('[data-deliverform]').forEach(b => b.addEventListener('click', () => {
+    const id = b.dataset.deliverform;
+    const box = document.getElementById('deliver_' + id);
+    const job = (window.consultantMine || []).find(x => x.job_id === id) || {};
+    const preSteps = Array.isArray(job.solution_steps) ? job.solution_steps.join('\n') : '';
+    const inp = 'width:100%;box-sizing:border-box;background:var(--surface-2);border:1px solid var(--border-strong);border-radius:8px;padding:8px;font-size:12px;color:var(--text);margin-bottom:6px';
     box.innerHTML = `
-      <input id="subTitle_${id}" placeholder="Short title for the fix" style="width:100%;box-sizing:border-box;background:var(--surface-2);border:1px solid var(--border-strong);border-radius:8px;padding:8px;font-size:12px;color:var(--text);margin-bottom:6px">
-      <input id="subWho_${id}" placeholder="Who acts (e.g. Buyer)" style="width:100%;box-sizing:border-box;background:var(--surface-2);border:1px solid var(--border-strong);border-radius:8px;padding:8px;font-size:12px;color:var(--text);margin-bottom:6px">
-      <textarea id="subSteps_${id}" rows="5" placeholder="Fix steps — one per line" style="width:100%;box-sizing:border-box;background:var(--surface-2);border:1px solid var(--border-strong);border-radius:8px;padding:8px;font-size:12px;color:var(--text);font-family:inherit"></textarea>
-      <button class="btn btn-primary" style="font-size:12px;margin-top:6px" data-dosubmit="${id}">Submit for review</button>
+      <input id="subTitle_${id}" placeholder="Short title for the fix" value="${escHtml(job.solution_title || '')}" style="${inp}">
+      <input id="subWho_${id}" placeholder="Who acts (e.g. Buyer)" value="${escHtml(job.solution_who || '')}" style="${inp}">
+      <textarea id="subSteps_${id}" rows="5" placeholder="Fix steps — one per line" style="${inp};font-family:inherit">${escHtml(preSteps)}</textarea>
+      <button class="btn btn-primary" style="font-size:12px;margin-top:6px" data-dodeliver="${id}">Deliver to user</button>
       <div id="subErr_${id}" style="font-size:11px;color:var(--danger);margin-top:4px"></div>`;
-    box.querySelector('[data-dosubmit]').addEventListener('click', async (e) => {
+    box.querySelector('[data-dodeliver]').addEventListener('click', async (e) => {
       const title = document.getElementById('subTitle_' + id).value.trim();
       const who = document.getElementById('subWho_' + id).value.trim();
       const steps = normalizeStepList(document.getElementById('subSteps_' + id).value.split('\n'));
       if (!steps.length) { document.getElementById('subErr_' + id).textContent = 'Add at least one step.'; return; }
-      e.currentTarget.disabled = true; e.currentTarget.textContent = 'Submitting…';
-      const { error } = await sb.rpc('submit_job_fix', { p_job_id: id, p_title: title, p_who: who, p_steps: steps });
-      if (error) { document.getElementById('subErr_' + id).textContent = error.message; e.currentTarget.disabled = false; e.currentTarget.textContent = 'Submit for review'; return; }
+      e.currentTarget.disabled = true; e.currentTarget.textContent = 'Delivering…';
+      const { error } = await sb.rpc('deliver_fix', { p_job_id: id, p_title: title, p_who: who, p_steps: steps });
+      if (error) { document.getElementById('subErr_' + id).textContent = error.message; e.currentTarget.disabled = false; e.currentTarget.textContent = 'Deliver to user'; return; }
       renderConsultant();
     });
   }));
@@ -2111,7 +2195,7 @@ function adminAppCard(a) {
   return `<div style="border-bottom:1px solid var(--border);padding:10px 0">
     <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center">
       <div><div style="font-size:13px;font-weight:600">${escHtml(a.email)}</div>
-        <div style="font-size:11px;color:var(--text-3)">Modules: ${escHtml((a.modules || []).join(', ') || '—')} · Tier ${escHtml(a.tier)} · <b style="color:var(--accent)">${escHtml(a.status)}</b> · Balance $${((a.credit_balance_cents || 0) / 100).toFixed(2)}</div></div>
+        <div style="font-size:11px;color:var(--text-3)">Modules: ${escHtml((a.modules || []).join(', ') || '—')} · Tier ${escHtml(a.tier)} · <b style="color:var(--accent)">${escHtml(a.status)}</b></div></div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
         <select data-tier="${a.user_id}" style="font-size:11px;background:var(--surface-2);border:1px solid var(--border-strong);border-radius:6px;color:var(--text);padding:2px">
           ${['bronze','silver','gold'].map(t => `<option value="${t}" ${a.tier === t ? 'selected' : ''}>${t}</option>`).join('')}</select>
@@ -2121,26 +2205,40 @@ function adminAppCard(a) {
 }
 
 function adminJobCard(j) {
+  const hasFix = Array.isArray(j.solution_steps) && j.solution_steps.length;
+  const fixPanel = hasFix ? `
+    <button class="btn btn-ghost" style="font-size:11px;padding:3px 9px;margin-top:8px" data-viewfix="${j.job_id}">🔍 View fix</button>
+    <div id="fixView_${j.job_id}" style="display:none;margin-top:6px;background:var(--surface-2);border-radius:8px;padding:10px 12px">
+      <div style="font-size:12px;font-weight:600;margin-bottom:2px">${escHtml(j.solution_title || 'Fix')}</div>
+      <div style="font-size:11px;color:var(--text-3);margin-bottom:6px">👤 ${escHtml(j.solution_who || '—')} · source: ${escHtml(j.solution_source || '—')} · ${escHtml(j.solution_status || '—')}</div>
+      <ul class="step-list" style="margin:0">${j.solution_steps.map((s, i) => `<li class="step-row"><span class="step-num">${i + 1}.</span><span class="step-text">${escHtml(s)}</span></li>`).join('')}</ul>
+    </div>` : '';
+  const noteHtml = j.user_note ? `<div style="font-size:11px;color:var(--warning);margin-top:6px;background:var(--surface-2);border-radius:6px;padding:8px">🗣️ User feedback: "${escHtml(j.user_note)}"</div>` : '';
+  let actions = '';
+  if (j.state === 'disputed') {
+    actions = `${noteHtml}<div class="btn-row" style="margin-top:8px">
+      <button class="btn btn-primary" style="font-size:11px;padding:4px 8px;background:var(--success)" data-uphold="${j.job_id}">Uphold consultant</button>
+      <button class="btn-danger" style="font-size:11px;padding:4px 8px" data-closejob="${j.job_id}">Refund user</button></div>
+      <div style="font-size:11px;color:var(--text-3);margin-top:4px">Review the fix + feedback, then side with the consultant (credit stands) or refund the user (money back on Stripe automatically).</div>`;
+  } else if (j.state === 'confirmed') {
+    actions = j.solution_status === 'PUBLISHED'
+      ? `<div style="font-size:11px;color:var(--success);margin-top:6px">✓ In the standard library.</div>`
+      : `<div class="btn-row" style="margin-top:8px"><button class="btn btn-primary" style="font-size:11px;padding:4px 8px" data-promote="${j.job_id}">⭐ Promote to standard library</button></div>
+         <div style="font-size:11px;color:var(--text-3);margin-top:4px">User-confirmed. Promote it so future users can find this fix by search.</div>`;
+  } else if (j.state === 'delivered') {
+    actions = `<div style="font-size:11px;color:var(--text-3);margin-top:6px">Delivered — awaiting the user's confirmation.</div>`;
+  } else if (j.state === 'revision_requested') {
+    actions = `${noteHtml}<div style="font-size:11px;color:var(--text-3);margin-top:4px">The consultant is revising this.</div>`;
+  }
   return `<div style="border-bottom:1px solid var(--border);padding:10px 0">
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:3px">
       <span class="lib-code">${escHtml(j.error_code || '—')}</span>
       <span style="font-size:10px;font-weight:600;padding:2px 7px;border-radius:999px;background:var(--surface-2);color:var(--accent)">${JOB_LABELS[j.state] || j.state}</span>
       <span style="font-size:11px;color:var(--text-3)">${escHtml(j.module || '')}</span></div>
     <div style="font-size:12px;color:var(--text)">${escHtml(j.error_text || '')}</div>
-    <div style="font-size:11px;color:var(--text-3);margin-top:2px">User: ${escHtml(j.user_email || '')}${j.consultant_email ? ` · Consultant: ${escHtml(j.consultant_email)}` : ''}${j.solution_title ? ` · Fix: ${escHtml(j.solution_title)}` : ''}</div>
-    ${j.state === 'submitted' ? `
-      <button class="btn btn-ghost" style="font-size:11px;padding:3px 9px;margin-top:8px" data-viewfix="${j.job_id}">🔍 View submitted fix</button>
-      <div id="fixView_${j.job_id}" style="display:none;margin-top:6px;background:var(--surface-2);border-radius:8px;padding:10px 12px">
-        <div style="font-size:12px;font-weight:600;margin-bottom:2px">${escHtml(j.solution_title || 'Submitted fix')}</div>
-        <div style="font-size:11px;color:var(--text-3);margin-bottom:6px">👤 ${escHtml(j.solution_who || '—')} · source: ${escHtml(j.solution_source || '—')}</div>
-        ${(Array.isArray(j.solution_steps) && j.solution_steps.length)
-          ? `<ul class="step-list" style="margin:0">${j.solution_steps.map((s, i) => `<li class="step-row"><span class="step-num">${i + 1}.</span><span class="step-text">${escHtml(s)}</span></li>`).join('')}</ul>`
-          : `<div style="font-size:11px;color:var(--text-3)">No steps found on this submission.</div>`}
-      </div>
-      <div class="btn-row" style="margin-top:8px">
-        <button class="btn btn-primary" style="font-size:11px;padding:4px 8px;background:var(--success)" data-deliver="${j.job_id}">Deliver to user</button>
-        <button class="btn-danger" style="font-size:11px;padding:4px 8px" data-closejob="${j.job_id}">Reject / refund</button></div>
-      <div style="font-size:11px;color:var(--text-3);margin-top:4px">Review the consultant's steps above, then Deliver or Refund. Refunding returns the user's payment on Stripe automatically.</div>` : ''}
+    <div style="font-size:11px;color:var(--text-3);margin-top:2px">User: ${escHtml(j.user_email || '')}${j.consultant_email ? ` · Consultant: ${escHtml(j.consultant_email)}` : ''}</div>
+    ${fixPanel}
+    ${actions}
     <div id="ajobMsg_${j.job_id}" style="font-size:11px;color:var(--danger);margin-top:4px"></div></div>`;
 }
 
@@ -2171,12 +2269,19 @@ function wireMarketplaceAdmin(el) {
     if (!box) return;
     const open = box.style.display !== 'none';
     box.style.display = open ? 'none' : 'block';
-    b.textContent = open ? '🔍 View submitted fix' : '🔍 Hide submitted fix';
+    b.textContent = open ? '🔍 View fix' : '🔍 Hide fix';
   }));
-  el.querySelectorAll('[data-deliver]').forEach(b => b.addEventListener('click', async () => {
-    b.disabled = true; b.textContent = 'Delivering…';
-    const { error } = await sb.rpc('deliver_job', { p_job_id: b.dataset.deliver });
-    if (error) { document.getElementById('ajobMsg_' + b.dataset.deliver).textContent = error.message; b.disabled = false; b.textContent = 'Deliver to user'; return; }
+  el.querySelectorAll('[data-uphold]').forEach(b => b.addEventListener('click', async () => {
+    if (!confirm('Side with the consultant? Their fix stands and their credit becomes available.')) return;
+    b.disabled = true; b.textContent = 'Saving…';
+    const { error } = await sb.rpc('admin_arbitrate_uphold', { p_job_id: b.dataset.uphold });
+    if (error) { document.getElementById('ajobMsg_' + b.dataset.uphold).textContent = error.message; b.disabled = false; b.textContent = 'Uphold consultant'; return; }
+    renderMarketplaceAdmin();
+  }));
+  el.querySelectorAll('[data-promote]').forEach(b => b.addEventListener('click', async () => {
+    b.disabled = true; b.textContent = 'Promoting…';
+    const { error } = await sb.rpc('admin_promote_to_library', { p_job_id: b.dataset.promote });
+    if (error) { document.getElementById('ajobMsg_' + b.dataset.promote).textContent = error.message; b.disabled = false; b.textContent = '⭐ Promote to standard library'; return; }
     renderMarketplaceAdmin();
   }));
   el.querySelectorAll('[data-closejob]').forEach(b => b.addEventListener('click', async () => {
