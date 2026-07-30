@@ -19,7 +19,7 @@ begin
   if not found then raise exception 'job not found'; end if;
   if j.solution_id is null then raise exception 'no fix on this job'; end if;
   if j.state <> 'confirmed' then raise exception 'only a user-confirmed fix can be promoted'; end if;
-  update solutions set status = 'PUBLISHED', updated_at = now() where id = j.solution_id;
+  update solutions set status = 'PUBLISHED' where id = j.solution_id;
 end $$;
 grant execute on function admin_promote_to_library(uuid) to authenticated;
 

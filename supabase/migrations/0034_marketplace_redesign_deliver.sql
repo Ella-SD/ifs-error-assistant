@@ -31,7 +31,7 @@ begin
   -- Reuse the solution when re-delivering (a revision), else create it.
   if j.solution_id is not null then
     update solutions set title = coalesce(p_title, title), who_acts = p_who,
-           instructions = p_steps, updated_at = now()
+           instructions = p_steps
      where id = j.solution_id returning id into v_sol;
   else
     insert into solutions (error_code, component_name, title, who_acts, source, status,
