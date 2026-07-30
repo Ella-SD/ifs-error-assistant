@@ -398,7 +398,7 @@
     <button class="nav-item" data-tab="marketplace" id="navMarketplace" style="display:none">
       <span class="nav-icon">🛠</span> Marketplace
     </button>
-    <button class="nav-item" data-tab="catalog">
+    <button class="nav-item" data-tab="catalog" id="navCatalog" style="display:none">
       <span class="nav-icon">⚙️</span> Error catalog
     </button>
   </nav>
@@ -3119,6 +3119,7 @@ Use web search when it would make your answer more accurate (checking IFS docume
 // ── CATALOG TAB ───────────────────────────────────────────────
 function renderCatalog() {
   const el = document.getElementById('tab-catalog');
+  if (!isPlatformAdmin) { el.innerHTML = `<div class="card"><div class="empty"><div class="empty-icon">🔒</div>Admin only.</div></div>`; return; }
   if (catalog.length === 0) {
     el.innerHTML = `<div class="card"><div class="empty"><div class="empty-icon">⚙️</div>Catalog not loaded yet. Check your connection.</div></div>`;
     return;
@@ -3635,13 +3636,15 @@ function renderUserBar() {
       <button id="billingBtn">${hasCustomer ? 'Manage billing' : 'Upgrade'}</button>` : ''}
     <button id="authSignout">Sign out</button>`;
   document.getElementById('authSignout').onclick = () => sb.auth.signOut();
-  // The Solution library + Escalations queue are admin-only tabs.
+  // The Solution library, Escalations, Marketplace, and Error catalog are admin-only tabs.
   const navLib = document.getElementById('navLibrary');
   if (navLib) navLib.style.display = isPlatformAdmin ? '' : 'none';
   const navEsc = document.getElementById('navEscalations');
   if (navEsc) navEsc.style.display = isPlatformAdmin ? '' : 'none';
   const navMkt = document.getElementById('navMarketplace');
   if (navMkt) navMkt.style.display = isPlatformAdmin ? '' : 'none';
+  const navCat = document.getElementById('navCatalog');
+  if (navCat) navCat.style.display = isPlatformAdmin ? '' : 'none';
   if (isPlatformAdmin) refreshEscalationBadge();
   renderNotifBell();
   const bb = document.getElementById('billingBtn');
