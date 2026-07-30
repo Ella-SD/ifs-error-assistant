@@ -1761,11 +1761,22 @@ function pendingJobCard(q) {
     <div style="font-size:12px;color:${stale ? 'var(--warning)' : 'var(--text-3)'}">${status}</div></div>`;
 }
 
+// Tier priority mirrors migration 0029 (gold first, then silver, then bronze).
+const TIER_STEP_MIN = 15;
+function tierRank(t) { const r = { gold: 0, silver: 1, bronze: 2 }[(t || '').toLowerCase()]; return r === undefined ? 2 : r; }
+function tierBadge(t) {
+  const key = (t || '').toLowerCase();
+  const c = { gold: '#d4a017', silver: '#9aa0b5', bronze: '#b5794e' }[key];
+  if (!c) return '';
+  return `<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:999px;background:var(--surface-2);color:${c}">${key.charAt(0).toUpperCase() + key.slice(1)}-tier specialist</span>`;
+}
+
 function pricedJobCard(q) {
+  const badge = tierBadge(q.consultant_tier);
   return `<div style="border-bottom:1px solid var(--border);padding:12px 0">
     <div style="font-size:13px;font-weight:600">${escHtml(q.error_code || 'Your issue')}${q.module ? ` <span style="font-size:11px;color:var(--text-3);font-weight:400">· ${escHtml(q.module)}</span>` : ''}</div>
     <div style="font-size:12px;color:var(--text-2);margin:3px 0 8px">${escHtml(q.error_text || '')}</div>
-    <div style="font-size:12px;color:var(--text);margin-bottom:8px">A specialist can resolve this for <b>$${(q.proposed_price_cents / 100).toFixed(2)}</b>.${q.already_paid_cents > 0 ? ` You've already paid $${(q.already_paid_cents / 100).toFixed(2)} toward it.` : ''}</div>
+    <div style="font-size:12px;color:var(--text);margin-bottom:8px">${badge ? badge + ' ' : ''}A specialist can resolve this for <b>$${(q.proposed_price_cents / 100).toFixed(2)}</b>.${q.already_paid_cents > 0 ? ` You've already paid $${(q.already_paid_cents / 100).toFixed(2)} toward it.` : ''}</div>
     <div class="btn-row">
       <button class="btn btn-primary" style="font-size:12px" data-approve-job="${q.job_id}">Approve &amp; pay $${(q.pay_now_cents / 100).toFixed(2)}</button>
       <button class="btn btn-ghost" style="font-size:12px" data-decline-job="${q.job_id}">Decline</button></div>
@@ -1949,13 +1960,22 @@ function editConsultantModules() {
 }
 
 function consultantOpenJobCard(j) {
+  // Tier priority: gold can quote immediately; lower tiers after their window.
+  // Everyone sees the job; only the quote action is gated (enforced server-side).
+  const waitMin = tierRank(consultantProfile && consultantProfile.tier) * TIER_STEP_MIN;
+  const ageMin = (Date.now() - new Date(j.created_at).getTime()) / 60000;
+  const openIn = Math.max(1, Math.ceil(waitMin - ageMin));
+  const action = ageMin >= waitMin
+    ? `<button class="btn btn-primary" style="font-size:12px" data-propose="${j.job_id}" data-base="${j.base_price_cents}">Send a quote</button>`
+    : `<button class="btn btn-ghost" style="font-size:12px" disabled>🔒 Opens to you in ~${openIn} min</button>
+       <div style="font-size:11px;color:var(--text-3);margin-top:4px">Gold specialists get first access to new jobs.</div>`;
   return `<div style="border-bottom:1px solid var(--border);padding:12px 0">
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:3px">
       <span class="lib-code">${escHtml(j.error_code || '—')}</span><span style="font-size:11px;color:var(--text-3)">${escHtml(j.module || '')}</span></div>
     <div style="font-size:12px;color:var(--text)">${escHtml(j.error_text || '')}</div>
     ${j.activity ? `<div style="font-size:11px;color:var(--text-2);margin-top:4px">🗣️ ${escHtml(j.activity)}</div>` : ''}
     <div class="btn-row" style="margin-top:8px">
-      <button class="btn btn-primary" style="font-size:12px" data-propose="${j.job_id}" data-base="${j.base_price_cents}">Send a quote</button></div>
+      ${action}</div>
     <div id="proposeBox_${j.job_id}"></div>
     <div id="jobMsg_${j.job_id}" style="font-size:11px;color:var(--danger);margin-top:4px"></div></div>`;
 }
