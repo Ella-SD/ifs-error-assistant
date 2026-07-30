@@ -1665,7 +1665,6 @@ async function renderEscalations() {
       ${r.state === 'escalated' ? `
       <div class="btn-row" style="margin-top:8px">
         <button class="btn btn-primary" style="font-size:11px;padding:4px 9px;background:var(--success)" data-esc-resolve="${r.id}">✓ Mark resolved (fix delivered)</button>
-        ${refundable ? `<button class="btn btn-ghost" style="font-size:11px;padding:4px 9px" data-esc-refund="${r.id}">↩ Mark refunded</button>` : ''}
       </div>` : ''}
     </div>`;
   };
@@ -1673,18 +1672,13 @@ async function renderEscalations() {
   el.innerHTML = `
     <div class="card">
       <div class="card-title" style="margin-bottom:2px">Escalations</div>
-      <div style="font-size:12px;color:var(--text-3);margin-bottom:12px">Rejected fixes awaiting review. Deliver a verified fix then mark resolved, or refund in Stripe then mark refunded. "Overdue" = older than ${escalationSlaDays} days (a flag only — nothing is automatic).</div>
+      <div style="font-size:12px;color:var(--text-3);margin-bottom:12px">Rejected fixes awaiting review. Deliver a verified fix then mark resolved. (The $4.99 automated-fix fee is non-refundable — specialist charges are refunded from the Marketplace tab.) "Overdue" = older than ${escalationSlaDays} days (a flag only — nothing is automatic).</div>
       ${open.length ? open.map(card).join('') : `<div class="empty" style="padding:20px">✓ No open escalations.</div>`}
     </div>
     ${closed.length ? `<div class="card"><div class="card-title" style="margin-bottom:8px">Recently closed (${closed.length})</div>${closed.slice(0, 20).map(card).join('')}</div>` : ''}`;
 
   el.querySelectorAll('[data-esc-resolve]').forEach(b =>
     b.addEventListener('click', () => resolveEscalation(b.dataset.escResolve, false)));
-  el.querySelectorAll('[data-esc-refund]').forEach(b =>
-    b.addEventListener('click', () => {
-      if (!confirm('Mark as refunded? Do this only after you have issued the refund in Stripe.')) return;
-      resolveEscalation(b.dataset.escRefund, true);
-    }));
 }
 
 async function resolveEscalation(resolutionId, refunded) {
@@ -3393,7 +3387,7 @@ function renderLanding() {
     <section class="lp-trust">
       <div class="lp-section lp-wrap lp-trust-row" style="padding-top:34px;padding-bottom:34px">
         <div class="lp-stat"><div class="big">42,742</div><div class="lbl">IFS errors catalogued — Apps 10 &amp; Cloud</div></div>
-        <div class="lp-stat"><div class="big">Verified — or free</div><div class="lbl">a verified fix, or your money back</div></div>
+        <div class="lp-stat"><div class="big">Verified — or refunded</div><div class="lbl">if a specialist can't resolve it, the specialist fee comes back</div></div>
         <div class="lp-stat"><div class="big">Expert help</div><div class="lbl">a consultant marketplace when you're stuck</div></div>
       </div>
     </section>
@@ -3421,7 +3415,7 @@ function renderLanding() {
             <li>Unlimited automated fixes for one user</li>
             <li>Full verified library — Apps 10 &amp; Cloud</li>
             <li>AI-assembled fixes included</li>
-            <li>Verified-or-refund guarantee</li>
+            <li>Verified specialist fix, or fee refunded</li>
           </ul>
           <button class="lp-btn-primary lpBuy">Get started</button>
         </div>
@@ -3433,7 +3427,7 @@ function renderLanding() {
             <li>Everything in Personal, for your team</li>
             <li>Up to 20 users included</li>
             <li>Full verified library — Apps 10 &amp; Cloud</li>
-            <li>Verified-or-refund guarantee</li>
+            <li>Verified specialist fix, or fee refunded</li>
           </ul>
           <button class="lp-btn-ghost lpBuy">Get started</button>
         </div>
@@ -3444,7 +3438,7 @@ function renderLanding() {
             <li>No subscription</li>
             <li>Pay only when you unlock a fix</li>
             <li>One complete step-by-step fix</li>
-            <li>Verified-or-refund guarantee</li>
+            <li>Verified specialist fix, or fee refunded</li>
           </ul>
           <button class="lp-btn-ghost lpBuy">Get started</button>
         </div>
