@@ -1692,12 +1692,13 @@ async function resolveEscalation(resolutionId, refunded) {
 async function renderMyFixes() {
   const el = document.getElementById('tab-myfixes');
   el.innerHTML = `<div class="card"><div class="empty"><span class="spin"></span> Loading your fixes…</div></div>`;
-  const [{ data, error }, priced, openJ] = await Promise.all([sb.rpc('my_resolutions'), sb.rpc('my_priced_jobs'), sb.rpc('my_open_jobs')]);
+  const [{ data, error }, priced, openJ, activeR] = await Promise.all([sb.rpc('my_resolutions'), sb.rpc('my_priced_jobs'), sb.rpc('my_open_jobs'), sb.rpc('my_active_jobs')]);
   if (error) { el.innerHTML = `<div class="card"><div class="empty">Couldn't load your fixes: ${escHtml(error.message || '')}</div></div>`; return; }
   const rows = (data || []).filter(r => Array.isArray(r.steps) && r.steps.length);
   const quotes = (priced && !priced.error) ? (priced.data || []) : [];
   const pending = (openJ && !openJ.error) ? (openJ.data || []) : [];
-  if (!rows.length && !quotes.length && !pending.length) {
+  const active = (activeR && !activeR.error) ? (activeR.data || []) : [];   // in_progress/submitted (degrades to [] pre-migration)
+  if (!rows.length && !quotes.length && !pending.length && !active.length) {
     el.innerHTML = `<div class="card"><div class="empty"><div class="empty-icon">💾</div>No unlocked fixes yet. Fixes you view or purchase will appear here so you can re-open them anytime — no re-charge.</div></div>`;
     return;
   }
@@ -1713,13 +1714,19 @@ async function renderMyFixes() {
       <div style="font-size:12px;color:var(--text-3);margin-bottom:12px">A specialist quoted a price for an issue you escalated. Approve to have them start — you're charged only when you approve, and refunded in full if they can't resolve it.</div>
       ${quotes.map(pricedJobCard).join('')}
     </div>` : '';
+  const activeHtml = active.length ? `
+    <div class="card" style="border:1px solid var(--accent)">
+      <div class="card-title" style="margin-bottom:2px;color:var(--accent)">Specialist working on it</div>
+      <div style="font-size:12px;color:var(--text-3);margin-bottom:12px">You've approved a specialist to resolve ${active.length === 1 ? 'this issue' : 'these issues'}. They'll deliver the verified fix right here.</div>
+      ${active.map(activeJobCard).join('')}
+    </div>` : '';
   const fixesHtml = rows.length ? `
     <div class="card">
       <div class="card-title" style="margin-bottom:2px">My fixes</div>
       <div style="font-size:12px;color:var(--text-3);margin-bottom:12px">Fixes you've unlocked. Re-open any of them here anytime — you won't be charged again, and you'll see exactly the steps you were originally given.</div>
       ${rows.map(myFixCard).join('')}
     </div>` : '';
-  el.innerHTML = pendingHtml + quotesHtml + fixesHtml;
+  el.innerHTML = quotesHtml + activeHtml + pendingHtml + fixesHtml;
   el.querySelectorAll('[data-fix-toggle]').forEach(b => b.addEventListener('click', () => {
     const box = document.getElementById('fixSteps_' + b.dataset.fixToggle);
     if (!box) return;
@@ -1759,6 +1766,18 @@ function pendingJobCard(q) {
     <div style="font-size:13px;font-weight:600">${escHtml(q.error_code || 'Your issue')}${q.module ? ` <span style="font-size:11px;color:var(--text-3);font-weight:400">· ${escHtml(q.module)}</span>` : ''}</div>
     <div style="font-size:12px;color:var(--text-2);margin:3px 0 6px">${escHtml(q.error_text || '')}</div>
     <div style="font-size:12px;color:${stale ? 'var(--warning)' : 'var(--text-3)'}">${status}</div></div>`;
+}
+
+// A job the user approved+paid; a specialist is working it (in_progress) or has
+// submitted for review. Surfaces the status AND what they paid for the specialist,
+// so the consultant charge isn't invisible on the user side.
+function activeJobCard(q) {
+  const paid = q.paid_cents > 0 ? ` — you paid $${(q.paid_cents / 100).toFixed(2)} for this` : '';
+  const label = q.state === 'submitted' ? 'Fix submitted — under final review' : 'A specialist is resolving this';
+  return `<div style="border-bottom:1px solid var(--border);padding:12px 0">
+    <div style="font-size:13px;font-weight:600">${escHtml(q.error_code || 'Your issue')}${q.module ? ` <span style="font-size:11px;color:var(--text-3);font-weight:400">· ${escHtml(q.module)}</span>` : ''}</div>
+    <div style="font-size:12px;color:var(--text-2);margin:3px 0 6px">${escHtml(q.error_text || '')}</div>
+    <div style="font-size:12px;color:var(--accent)">🔧 ${label}${paid}. You'll get the verified fix here.</div></div>`;
 }
 
 // Tier priority mirrors migration 0029 (gold first, then silver, then bronze).
