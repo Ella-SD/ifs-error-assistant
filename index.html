@@ -3695,7 +3695,12 @@ async function handleSignup() {
   if (!email || !password) return showAuthMsg('Enter your email and password.');
   if (password.length < 8) return showAuthMsg('Password must be at least 8 characters.');
   const btn = document.getElementById('authSubmit'); btn.disabled = true; btn.textContent = 'Creating…';
-  const { data, error } = await sb.auth.signUp({ email, password });
+  // Send the confirmation link back to THIS app's URL explicitly, so it never
+  // depends on the Supabase "Site URL" field and auto-adapts across domains
+  // (github.io now, ifsguru.com later). Resolves to the app's directory (ends in
+  // "/"), which must be in Supabase's Redirect URLs allow-list.
+  const appBase = location.origin + location.pathname.replace(/[^/]*$/, '');
+  const { data, error } = await sb.auth.signUp({ email, password, options: { emailRedirectTo: appBase } });
   if (error) { btn.disabled = false; btn.textContent = 'Sign up'; return showAuthMsg(error.message); }
   if (!data.session) {
     // Email-confirmation is ON — no session yet
