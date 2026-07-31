@@ -1633,7 +1633,7 @@ async function renderEscalations() {
   const rows = data || [];
   const open = rows.filter(r => r.state === 'escalated');
   const closed = rows.filter(r => r.state !== 'escalated');
-  const stripeBase = 'https://dashboard.stripe.com/test/payments/';   // test mode
+  const stripeBase = 'https://dashboard.stripe.com/payments/';   // live mode
 
   const card = (r) => {
     const days = escAgeDays(r.updated_at);
