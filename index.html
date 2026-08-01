@@ -2215,7 +2215,8 @@ function adminAppCard(a) {
   return `<div style="border-bottom:1px solid var(--border);padding:10px 0">
     <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center">
       <div><div style="font-size:13px;font-weight:600">${escHtml(a.email)}</div>
-        <div style="font-size:11px;color:var(--text-3)">Modules: ${escHtml((a.modules || []).join(', ') || '—')} · Tier ${escHtml(a.tier)} · <b style="color:var(--accent)">${escHtml(a.status)}</b></div></div>
+        <div style="font-size:11px;color:var(--text-3)">Modules: ${escHtml((a.modules || []).join(', ') || '—')} · Tier ${escHtml(a.tier)} · <b style="color:var(--accent)">${escHtml(a.status)}</b></div>
+        <div style="font-size:11px;color:var(--text-3);margin-top:2px" title="Track record — informs tier decisions">✅ <b style="color:var(--success)">${a.confirmed_count || 0}</b> confirmed · <span style="color:${(a.refunded_count || 0) > 0 ? 'var(--danger)' : 'var(--text-3)'}">↩ ${a.refunded_count || 0} refunded</span> · 📦 ${a.taken_count || 0} taken</div></div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
         <select data-tier="${a.user_id}" style="font-size:11px;background:var(--surface-2);border:1px solid var(--border-strong);border-radius:6px;color:var(--text);padding:2px">
           ${['bronze','silver','gold'].map(t => `<option value="${t}" ${a.tier === t ? 'selected' : ''}>${t}</option>`).join('')}</select>
