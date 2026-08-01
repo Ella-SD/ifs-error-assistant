@@ -3502,10 +3502,14 @@ function renderUpgrade(targetEl) {
           <button class="btn btn-ghost" id="planPayg">Add a card</button>
         </div>
       </div>
+      <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border);font-size:12px;color:var(--text-3)">
+        💼 Here to help other users as an IFS specialist? You don't need a plan — <a href="#" id="goConsultant" style="color:var(--accent);font-weight:600">go to the Consultant tab</a>.
+      </div>
     </div>`;
   const p = document.getElementById('planPersonal'); if (p) p.onclick = () => startCheckout('personal', p);
   const c = document.getElementById('planCompany');  if (c) c.onclick = () => startCheckout('company', c);
   const g = document.getElementById('planPayg');     if (g) g.onclick = () => startPaygSetup(g);
+  const gc = document.getElementById('goConsultant'); if (gc) gc.onclick = (e) => { e.preventDefault(); document.querySelector('[data-tab="consultant"]').click(); };
 }
 
 // After returning from Stripe Checkout/Portal, refresh billing state.
