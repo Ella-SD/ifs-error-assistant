@@ -3205,6 +3205,20 @@ async function sendChatMessage() {
   const text = input.value.trim();
   if (!text) return;
 
+  // Daily free-question cap (abuse guard — generous for real users, admins exempt,
+  // limit is config-driven in chatbot_daily_limit). Fail open on any RPC hiccup.
+  try {
+    const { data: quota } = await sb.rpc('use_chatbot_quota');
+    if (quota && quota.allowed === false) {
+      document.getElementById('chatStarters').innerHTML = '';
+      chatHistory.push({ role: 'user', content: text });
+      chatHistory.push({ role: 'assistant', content: `You've reached today's limit of ${quota.limit} free questions — it resets tomorrow. For the exact fix to a specific error, head to the Troubleshoot or Search tab.` });
+      input.value = '';
+      renderChatMessages();
+      return;
+    }
+  } catch (e) { /* quota check unavailable — don't block the user */ }
+
   document.getElementById('chatStarters').innerHTML = '';
   chatHistory.push({ role: 'user', content: text });
   input.value = '';
