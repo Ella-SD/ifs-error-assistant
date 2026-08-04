@@ -103,6 +103,9 @@
 
   /* Main content */
   .main { flex: 1; overflow-y: auto; padding: 24px; }
+  /* Cap content to a comfortable centered column so wide desktop screens
+     look tidy instead of stretching edge-to-edge with empty space. */
+  .main > div { max-width: 1040px; margin-left: auto; margin-right: auto; }
 
   /* Cards */
   .card {
