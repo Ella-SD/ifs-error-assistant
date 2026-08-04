@@ -2199,9 +2199,13 @@ async function renderMarketplaceAdmin() {
   const el = document.getElementById('tab-marketplace');
   if (!isPlatformAdmin) { el.innerHTML = `<div class="card"><div class="empty"><div class="empty-icon">🔒</div>Admin only.</div></div>`; return; }
   el.innerHTML = `<div class="card"><div class="empty"><span class="spin"></span> Loading…</div></div>`;
-  const [appsR, jobsR, coR] = await Promise.all([sb.rpc('admin_consultant_applications'), sb.rpc('admin_jobs'), sb.rpc('admin_cashouts')]);
-  const apps = appsR.data || [], jobs = jobsR.data || [], cashouts = coR.data || [];
+  const [usersR, appsR, jobsR, coR] = await Promise.all([sb.rpc('admin_users_overview'), sb.rpc('admin_consultant_applications'), sb.rpc('admin_jobs'), sb.rpc('admin_cashouts')]);
+  const users = usersR.data || [], apps = appsR.data || [], jobs = jobsR.data || [], cashouts = coR.data || [];
+  const subCount = users.filter(u => u.subscribed).length, paygCount = users.filter(u => u.payg_ready && !u.subscribed).length;
   el.innerHTML = `
+    <div class="card"><div class="card-title" style="margin-bottom:2px">Users (${users.length})</div>
+      <div style="font-size:11px;color:var(--text-3);margin-bottom:8px">💳 <b style="color:var(--success)">${subCount}</b> subscribed · 🎟️ ${paygCount} pay-as-you-go · 👥 ${users.length - subCount - paygCount} free</div>
+      ${users.length ? users.map(adminUserCard).join('') : '<div class="empty" style="padding:14px">No users yet.</div>'}</div>
     <div class="card"><div class="card-title" style="margin-bottom:8px">Consultant applications (${apps.length})</div>
       ${apps.length ? apps.map(adminAppCard).join('') : '<div class="empty" style="padding:14px">No applications.</div>'}</div>
     <div class="card"><div class="card-title" style="margin-bottom:8px">Cash-out requests (${cashouts.length})</div>
@@ -2209,6 +2213,25 @@ async function renderMarketplaceAdmin() {
     <div class="card"><div class="card-title" style="margin-bottom:8px">Jobs (${jobs.length})</div>
       ${jobs.length ? jobs.map(adminJobCard).join('') : '<div class="empty" style="padding:14px">No jobs yet.</div>'}</div>`;
   wireMarketplaceAdmin(el);
+}
+
+function adminUserCard(u) {
+  const when = u.created_at ? new Date(u.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '—';
+  const planLabel = { personal: 'Personal', company: 'Company', pay_as_you_go: 'Pay-as-you-go' };
+  let badge;
+  if (u.subscribed) badge = `<span style="font-size:10px;font-weight:600;padding:2px 7px;border-radius:999px;background:var(--success);color:#fff">💳 ${escHtml(planLabel[u.plan] || 'Subscribed')}</span>`;
+  else if (u.payg_ready) badge = `<span style="font-size:10px;font-weight:600;padding:2px 7px;border-radius:999px;background:var(--surface-2);color:var(--accent)">🎟️ Pay-as-you-go</span>`;
+  else badge = `<span style="font-size:10px;font-weight:600;padding:2px 7px;border-radius:999px;background:var(--surface-2);color:var(--text-3)">Free</span>`;
+  const tags = [];
+  if (u.role === 'platform_admin') tags.push('<span style="color:var(--accent)">admin</span>');
+  if (u.is_consultant) tags.push('🛠️ consultant');
+  if (u.company_name) tags.push(escHtml(u.company_name));
+  if (u.subscription_status && !u.subscribed) tags.push(`<span style="color:var(--warning)">${escHtml(u.subscription_status)}</span>`);
+  return `<div style="border-bottom:1px solid var(--border);padding:10px 0">
+    <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center">
+      <div><div style="font-size:13px;font-weight:600">${escHtml(u.email)}</div>
+        <div style="font-size:11px;color:var(--text-3)">Joined ${escHtml(when)}${tags.length ? ' · ' + tags.join(' · ') : ''}</div></div>
+      ${badge}</div></div>`;
 }
 
 function adminAppCard(a) {
