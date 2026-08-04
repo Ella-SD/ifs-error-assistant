@@ -489,8 +489,13 @@
   .auth-gate.landing-mode { display:block; align-items:initial; justify-content:initial; padding:0; overflow-y:auto; background:var(--bg); }
   .lp-nav {
     height:60px; background:var(--header-bg); display:flex; align-items:center;
-    justify-content:space-between; padding:0 24px; position:sticky; top:0; z-index:10;
+    justify-content:center; padding:0 24px; position:sticky; top:0; z-index:10;
     border-bottom:1px solid var(--border);
+  }
+  /* Cap header contents to the hero's column width so the logo + login align
+     with the centered content instead of floating at the screen edges. */
+  .lp-nav-inner {
+    width:100%; max-width:1000px; display:flex; align-items:center; justify-content:space-between;
   }
   .lp-brand { display:flex; align-items:center; gap:10px; }
   .lp-logo-img { height:42px; width:auto; display:block; }
@@ -3566,13 +3571,15 @@ function renderLanding() {
   gate.classList.add('landing-mode');
   gate.innerHTML = `
     <nav class="lp-nav">
-      <div class="lp-brand">${landingLogoTile()}</div>
-      <div class="lp-nav-right">
-        <div class="lp-nav-links">
-          <a id="lpNavHow">How it works</a>
-          <a id="lpNavPrice">Pricing</a>
+      <div class="lp-nav-inner">
+        <div class="lp-brand">${landingLogoTile()}</div>
+        <div class="lp-nav-right">
+          <div class="lp-nav-links">
+            <a id="lpNavHow">How it works</a>
+            <a id="lpNavPrice">Pricing</a>
+          </div>
+          <button class="lp-nav-btn" id="lpLogin">Log in</button>
         </div>
-        <button class="lp-nav-btn" id="lpLogin">Log in</button>
       </div>
     </nav>
 
