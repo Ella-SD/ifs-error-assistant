@@ -3123,7 +3123,7 @@ function renderBrowseCategory(el, category) {
 
   const shown = unsolved.slice(0, 30);
   if (unsolved.length > 0) {
-    html += `<div class="card"><div class="card-title" style="margin-bottom:10px">⚠️ Known errors without a fix yet (${unsolved.length.toLocaleString()})</div>`;
+    html += `<div class="card"><div class="card-title" style="margin-bottom:10px">📋 Known errors — not yet in the library (${unsolved.length.toLocaleString()})</div>`;
     html += shown.map((r, i) => `
       <div style="border-bottom:1px solid var(--border);padding:10px 0">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
