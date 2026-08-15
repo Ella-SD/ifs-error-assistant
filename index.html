@@ -2999,7 +2999,7 @@ function runSearch() {
   }
 
   if (catalogHits.length > 0) {
-    html += `<div class="card"><div class="card-title" style="margin-bottom:10px">⚠️ Catalog matches without a curated fix yet (${catalogHits.length})</div>`;
+    html += `<div class="card"><div class="card-title" style="margin-bottom:10px">📋 Known errors — not yet in the library (${catalogHits.length})</div>`;
     html += catalogHits.map((r, i) => `
       <div style="border-bottom:1px solid var(--border);padding:10px 0">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
