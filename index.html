@@ -3206,7 +3206,7 @@ function renderChatbot() {
       </div>
     </div>
     <div class="card">
-      <div id="chatMessages" style="display:flex;flex-direction:column;gap:12px;max-height:50vh;overflow-y:auto;padding-right:4px"></div>
+      <div id="chatMessages" style="display:flex;flex-direction:column;gap:12px;max-height:50vh;overflow-y:auto;padding-right:4px;position:relative"></div>
       <div id="chatStarters"></div>
       <div style="display:flex;gap:8px;margin-top:12px;align-items:flex-end">
         <textarea id="chatInput" rows="2" placeholder="Type your question..."
@@ -3258,7 +3258,19 @@ function renderChatMessages() {
         ${escHtml(m.content)}
       </div>
     </div>`).join('');
-  box.scrollTop = box.scrollHeight;
+  scrollChatToQuestion(box);
+}
+
+// Scroll so the latest QUESTION sits at the top of the chat box — the user reads the
+// answer top-to-bottom instead of landing at its end. Falls back to the bottom if
+// there's no question yet.
+function scrollChatToQuestion(box) {
+  box = box || document.getElementById('chatMessages');
+  if (!box) return;
+  let idx = -1;
+  for (let i = chatHistory.length - 1; i >= 0; i--) { if (chatHistory[i].role === 'user') { idx = i; break; } }
+  const target = idx >= 0 ? box.children[idx] : null;
+  box.scrollTop = target ? Math.max(0, target.offsetTop - 6) : box.scrollHeight;
 }
 
 async function sendChatMessage() {
@@ -3293,7 +3305,7 @@ async function sendChatMessage() {
 
   const box = document.getElementById('chatMessages');
   box.insertAdjacentHTML('beforeend', `<div id="chatTyping" style="display:flex;justify-content:flex-start"><div style="padding:10px 13px;border-radius:12px;background:var(--surface-2);color:var(--text-3);font-size:13px">Thinking…</div></div>`);
-  box.scrollTop = box.scrollHeight;
+  scrollChatToQuestion(box);
 
   try {
     const resp = await fetch('https://ifs-error-assistant-proxy.vercel.app/api/messages', {
