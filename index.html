@@ -2139,6 +2139,19 @@ async function consultantJobRefund(jobId) {
   } catch (e) { return { error: e.message || 'Network error.' }; }
 }
 
+// POST to the confirm-user endpoint (admin only). Marks a user's email as
+// confirmed so a stuck lead can sign in without the email link.
+async function adminConfirmUser(userId) {
+  try {
+    const resp = await fetch('https://ifs-error-assistant-proxy.vercel.app/api/confirm-user', {
+      method: 'POST', headers: await authedHeaders(), body: JSON.stringify({ user_id: userId })
+    });
+    const data = await resp.json();
+    if (data.error) return { error: data.error.message || 'Could not confirm user.' };
+    return { ok: true, data };
+  } catch (e) { return { error: e.message || 'Network error.' }; }
+}
+
 function wireConsultantActions(el) {
   const emb = el.querySelector('#editModulesBtn');
   if (emb) emb.addEventListener('click', editConsultantModules);
@@ -2239,16 +2252,24 @@ function adminUserCard(u) {
   if (u.subscribed) badge = `<span style="font-size:10px;font-weight:600;padding:2px 7px;border-radius:999px;background:var(--success);color:#fff">💳 ${escHtml(planLabel[u.plan] || 'Subscribed')}</span>`;
   else if (u.payg_ready) badge = `<span style="font-size:10px;font-weight:600;padding:2px 7px;border-radius:999px;background:var(--surface-2);color:var(--accent)">🎟️ Pay-as-you-go</span>`;
   else badge = `<span style="font-size:10px;font-weight:600;padding:2px 7px;border-radius:999px;background:var(--surface-2);color:var(--text-3)">Free</span>`;
+  const unconfirmed = u.email_confirmed === false;
   const tags = [];
+  if (unconfirmed) tags.push('<span style="color:var(--warning)">⏳ unconfirmed</span>');
   if (u.role === 'platform_admin') tags.push('<span style="color:var(--accent)">admin</span>');
   if (u.is_consultant) tags.push('🛠️ consultant');
   if (u.company_name) tags.push(escHtml(u.company_name));
   if (u.subscription_status && !u.subscribed) tags.push(`<span style="color:var(--warning)">${escHtml(u.subscription_status)}</span>`);
+  // "Confirm now" — only for unconfirmed users. Bypasses the email link for
+  // stuck leads (e.g. corporate spam filter) once verified another way.
+  const confirmBtn = unconfirmed
+    ? `<button class="btn btn-ghost" style="font-size:11px;padding:4px 8px" data-confirmuser="${u.user_id}" title="Mark this email as confirmed so they can sign in without the email link">✓ Confirm now</button>`
+    : '';
   return `<div style="border-bottom:1px solid var(--border);padding:10px 0">
     <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center">
       <div><div style="font-size:13px;font-weight:600">${escHtml(u.email)}</div>
         <div style="font-size:11px;color:var(--text-3)">Joined ${escHtml(when)}${tags.length ? ' · ' + tags.join(' · ') : ''}</div></div>
-      ${badge}</div></div>`;
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">${confirmBtn}${badge}</div></div>
+    <div id="cfuMsg_${u.user_id}" style="font-size:11px;color:var(--danger);margin-top:2px"></div></div>`;
 }
 
 function adminAppCard(a) {
@@ -2324,6 +2345,14 @@ function wireMarketplaceAdmin(el) {
     const tier = el.querySelector(`[data-tier="${b.dataset.appstatus}"]`)?.value || null;
     const { error } = await sb.rpc('admin_set_consultant', { p_user: b.dataset.appstatus, p_status: b.dataset.val, p_tier: tier });
     if (error) { alert(error.message); return; }
+    renderMarketplaceAdmin();
+  }));
+  el.querySelectorAll('[data-confirmuser]').forEach(b => b.addEventListener('click', async () => {
+    if (!confirm("Manually confirm this user's email? They'll be able to sign in without the email link. Only do this for someone you've verified another way (e.g. they replied to you).")) return;
+    const id = b.dataset.confirmuser, msg = document.getElementById('cfuMsg_' + id);
+    b.disabled = true; b.textContent = 'Confirming…';
+    const res = await adminConfirmUser(id);
+    if (res.error) { if (msg) msg.textContent = res.error; b.disabled = false; b.textContent = '✓ Confirm now'; return; }
     renderMarketplaceAdmin();
   }));
   el.querySelectorAll('[data-viewfix]').forEach(b => b.addEventListener('click', () => {
