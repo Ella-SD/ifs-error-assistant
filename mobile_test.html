@@ -1,0 +1,71 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  :root{--bg:#f5f6f8;--surface:#fff;--surface-2:#f1f3f7;--border:#e6e8ef;--text:#16181f;--text-2:#565e70;--text-3:#8a90a2;--accent:#6d34cf;--accent-dim:#efe8fb;--header-bg:#fff;--header-text:#16181f;--header-text-dim:#8a90a2;--radius:8px;--font:system-ui,Arial,sans-serif;}
+  *{box-sizing:border-box;} body{margin:0;font-family:var(--font);background:var(--bg);}
+  .header{background:var(--header-bg);border-bottom:1px solid var(--border);padding:8px 24px;display:flex;align-items:center;gap:12px;}
+  .header-logo-img{height:38px;width:auto;display:block;}
+  .catalog-status{font-size:11px;padding:3px 8px;border-radius:999px;background:var(--accent-dim);color:var(--accent);margin-left:8px;min-width:130px;text-align:center;display:inline-block;}
+  .header-sub{font-size:12px;color:var(--header-text-dim);margin-left:auto;}
+  .app{display:flex;height:calc(100vh - 57px);}
+  .sidebar{width:200px;min-width:200px;background:var(--surface);border-right:1px solid var(--border);padding:12px 8px;display:flex;flex-direction:column;gap:2px;}
+  .nav-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;font-size:13px;font-weight:500;color:var(--text-2);cursor:pointer;border:none;background:none;width:100%;text-align:left;}
+  .nav-item.active{background:var(--accent-dim);color:var(--accent);}
+  .nav-section-label{font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--text-3);padding:14px 12px 4px;}
+  .main{flex:1;overflow-y:auto;padding:24px;}
+  .main>div{max-width:1040px;margin-left:auto;margin-right:auto;}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;}
+
+  /* ── Mobile ── */
+  @media (max-width:640px){
+    html,body{overflow-x:hidden;}
+    .header{padding:8px 12px;gap:8px;flex-wrap:wrap;}
+    .header-sub{display:none;}
+    .app{flex-direction:column;height:auto;min-height:calc(100vh - 57px);}
+    .sidebar{width:100%;min-width:0;flex-direction:row;flex-wrap:wrap;border-right:none;border-bottom:1px solid var(--border);padding:8px;gap:4px;}
+    .sidebar .nav-item{width:auto;flex:0 1 auto;}
+    .nav-section-label{display:none;}
+    .main{padding:14px;overflow-wrap:break-word;}
+    .main>div{max-width:100%;}
+  }
+</style></head>
+<body>
+<div class="header">
+  <div class="header-logo-img" style="width:38px;height:38px;background:var(--accent);border-radius:8px"></div>
+  <div class="catalog-status">51,273 errors loaded</div>
+  <div class="header-sub">IFS 10 &amp; Cloud Error Catalog</div>
+</div>
+<div class="app">
+  <nav class="sidebar">
+    <button class="nav-item active">🔍 Troubleshoot</button>
+    <div class="nav-section-label">Other ways to find a fix</div>
+    <button class="nav-item">🔎 Search</button>
+    <button class="nav-item">📁 Browse by category</button>
+    <button class="nav-item">💬 Ask a question</button>
+    <button class="nav-item">💾 My fixes</button>
+    <button class="nav-item">💼 Consultant</button>
+    <div class="nav-section-label">Admin &amp; data</div>
+    <button class="nav-item">🗂 Archive</button>
+    <button class="nav-item">📚 Solution library</button>
+    <button class="nav-item">⚠️ Escalations</button>
+    <button class="nav-item">🛠 Marketplace</button>
+    <button class="nav-item">⚙️ Error catalog</button>
+  </nav>
+  <main class="main">
+    <div>
+      <div class="card">
+        <div style="font-weight:700;margin-bottom:8px">USERS (10)</div>
+        <div style="border-bottom:1px solid var(--border);padding:10px 0">
+          <div style="font-weight:600">belbraouate@hotmail.fr</div>
+          <div style="font-size:12px;color:var(--text-3)">Joined Sep 15, 2026 · belbraouate</div>
+        </div>
+        <div style="border-bottom:1px solid var(--border);padding:10px 0">
+          <div style="font-weight:600">waqas1181@hotmail.com</div>
+          <div style="font-size:12px;color:var(--text-3)">Joined Sep 14, 2026 · 🛠️ consultant · waqas1181</div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+</body></html>
