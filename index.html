@@ -361,6 +361,25 @@
     background: none; color: var(--text-2); transition: all .15s;
   }
   .feedback-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* ── Mobile: stack the sidebar above the content and stop the page
+        overflowing sideways (the blank space on the right on phones) ── */
+  @media (max-width: 640px) {
+    html, body { overflow-x: hidden; }
+    .header { padding: 8px 12px; gap: 8px; flex-wrap: wrap; }
+    .header-sub { display: none; }
+    .app { flex-direction: column; height: auto; min-height: calc(100vh - 57px); }
+    .sidebar {
+      width: 100%; min-width: 0;
+      flex-direction: row; flex-wrap: wrap;
+      border-right: none; border-bottom: 1px solid var(--border);
+      padding: 8px; gap: 4px;
+    }
+    .sidebar .nav-item { width: auto; flex: 0 1 auto; }
+    .nav-section-label { display: none; }
+    .main { padding: 14px; overflow-wrap: break-word; }
+    .main > div { max-width: 100%; }
+  }
 </style>
 </head>
 <body>
