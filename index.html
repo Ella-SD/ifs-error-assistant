@@ -361,6 +361,25 @@
     background: none; color: var(--text-2); transition: all .15s;
   }
   .feedback-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* ── Mobile: stack the sidebar into a horizontal scrolling strip so the
+        logged-in app is usable on a phone (was fixed 200px + squished content) ── */
+  @media (max-width: 640px) {
+    .header { padding: 8px 12px; gap: 8px; flex-wrap: wrap; }
+    .header-sub { display: none; }
+    .app { flex-direction: column; height: auto; min-height: calc(100vh - 57px); }
+    .sidebar {
+      width: 100%; min-width: 0;
+      flex-direction: row; flex-wrap: nowrap;
+      overflow-x: auto; -webkit-overflow-scrolling: touch;
+      border-right: none; border-bottom: 1px solid var(--border);
+      padding: 8px; gap: 4px;
+    }
+    .sidebar .nav-item { flex: 0 0 auto; white-space: nowrap; }
+    .nav-section-label { display: none; }
+    .main { padding: 14px; }
+    .main > div { max-width: 100%; }
+  }
 </style>
 </head>
 <body>
