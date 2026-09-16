@@ -2025,22 +2025,63 @@ function renderConsultantApply(el) {
   const modules = [...new Set(catalog.map(r => r.COMPONENT_NAME).filter(Boolean))].sort();
   el.innerHTML = `
     <div class="card">
-      <div class="card-title">Become a consultant</div>
-      <div style="font-size:12px;color:var(--text-3);margin-bottom:12px">Help other IFS users resolve errors in your areas of expertise and earn credit. Pick your modules and apply — an admin reviews new consultants before you can take jobs.</div>
-      <div class="field"><label>Your modules</label>
-        <select id="applyModules" multiple size="8" style="width:100%;background:var(--surface-2);border:1px solid var(--border-strong);border-radius:8px;padding:8px;font-size:13px;color:var(--text)">
+      <div class="card-title">Become a specialist</div>
+      <div style="font-size:12px;color:var(--text-3);margin-bottom:16px">Help other IFS users resolve errors in your areas of expertise and earn credit. Every application is reviewed before you can take jobs — we ask for a bit of background so we can verify your IFS experience.</div>
+      <div class="field" style="margin-bottom:10px"><label style="font-size:12px;font-weight:600;color:var(--text-2)">Full name <span style="color:var(--danger)">*</span></label>
+        <input id="applyName" type="text" placeholder="Your full name" style="width:100%;background:var(--surface-2);border:1px solid var(--border-strong);border-radius:8px;padding:8px;font-size:13px;color:var(--text);margin-top:4px"></div>
+      <div class="field" style="margin-bottom:10px"><label style="font-size:12px;font-weight:600;color:var(--text-2)">Country <span style="color:var(--danger)">*</span></label>
+        <input id="applyCountry" type="text" placeholder="e.g. Canada" style="width:100%;background:var(--surface-2);border:1px solid var(--border-strong);border-radius:8px;padding:8px;font-size:13px;color:var(--text);margin-top:4px"></div>
+      <div class="field" style="margin-bottom:10px"><label style="font-size:12px;font-weight:600;color:var(--text-2)">Years of IFS experience <span style="color:var(--danger)">*</span></label>
+        <select id="applyYears" style="width:100%;background:var(--surface-2);border:1px solid var(--border-strong);border-radius:8px;padding:8px;font-size:13px;color:var(--text);margin-top:4px">
+          <option value="">— Select —</option>
+          <option value="< 1 year">Less than 1 year</option>
+          <option value="1–3 years">1–3 years</option>
+          <option value="3–5 years">3–5 years</option>
+          <option value="5–10 years">5–10 years</option>
+          <option value="10+ years">10+ years</option>
+        </select></div>
+      <div class="field" style="margin-bottom:10px"><label style="font-size:12px;font-weight:600;color:var(--text-2)">IFS modules <span style="color:var(--danger)">*</span></label>
+        <select id="applyModules" multiple size="8" style="width:100%;background:var(--surface-2);border:1px solid var(--border-strong);border-radius:8px;padding:8px;font-size:13px;color:var(--text);margin-top:4px">
           ${modules.map(m => `<option value="${escHtml(m)}">${escHtml(m)}</option>`).join('')}
         </select>
         <div style="font-size:11px;color:var(--text-3);margin-top:4px">Hold Ctrl/Cmd to select multiple.</div></div>
-      <button class="btn btn-primary" id="applyConsultantBtn">Apply</button>
+      <div class="field" style="margin-bottom:10px"><label style="font-size:12px;font-weight:600;color:var(--text-2)">LinkedIn or professional profile URL</label>
+        <input id="applyLinkedIn" type="url" placeholder="https://linkedin.com/in/your-profile" style="width:100%;background:var(--surface-2);border:1px solid var(--border-strong);border-radius:8px;padding:8px;font-size:13px;color:var(--text);margin-top:4px">
+        <div style="font-size:11px;color:var(--text-3);margin-top:4px">Strongly recommended — helps us verify your background quickly.</div></div>
+      <div class="field" style="margin-bottom:10px"><label style="font-size:12px;font-weight:600;color:var(--text-2)">Brief IFS background</label>
+        <textarea id="applyBio" rows="3" placeholder="e.g. 8 years implementing IFS Apps 10 for discrete manufacturers — strong in MM, SCM, and Shop Floor Control." maxlength="500" style="width:100%;background:var(--surface-2);border:1px solid var(--border-strong);border-radius:8px;padding:8px;font-size:13px;color:var(--text);resize:vertical;margin-top:4px"></textarea>
+        <div style="font-size:11px;color:var(--text-3);margin-top:4px">2–3 sentences on where you've worked with IFS and which modules you know well.</div></div>
+      <div class="field" style="margin-bottom:16px"><label style="font-size:12px;font-weight:600;color:var(--text-2)">Resume / CV link (optional)</label>
+        <input id="applyResume" type="url" placeholder="https://drive.google.com/… or Dropbox, etc." style="width:100%;background:var(--surface-2);border:1px solid var(--border-strong);border-radius:8px;padding:8px;font-size:13px;color:var(--text);margin-top:4px">
+        <div style="font-size:11px;color:var(--text-3);margin-top:4px">Paste a shareable link to your resume — Google Drive, Dropbox, OneDrive, etc.</div></div>
+      <button class="btn btn-primary" id="applyConsultantBtn">Submit application</button>
       <div id="applyErr" style="font-size:11px;color:var(--danger);margin-top:8px"></div>
     </div>`;
   document.getElementById('applyConsultantBtn').addEventListener('click', async (e) => {
-    const sel = Array.from(document.getElementById('applyModules').selectedOptions).map(o => o.value);
-    if (!sel.length) { document.getElementById('applyErr').textContent = 'Pick at least one module.'; return; }
-    e.currentTarget.disabled = true; e.currentTarget.textContent = 'Applying…';
-    const { error } = await sb.rpc('apply_as_consultant', { p_modules: sel });
-    if (error) { document.getElementById('applyErr').textContent = error.message; e.currentTarget.disabled = false; e.currentTarget.textContent = 'Apply'; return; }
+    const errEl = document.getElementById('applyErr');
+    errEl.textContent = '';
+    const name    = document.getElementById('applyName').value.trim();
+    const country = document.getElementById('applyCountry').value.trim();
+    const years   = document.getElementById('applyYears').value;
+    const sel     = Array.from(document.getElementById('applyModules').selectedOptions).map(o => o.value);
+    const linkedin = document.getElementById('applyLinkedIn').value.trim();
+    const bio      = document.getElementById('applyBio').value.trim();
+    const resume   = document.getElementById('applyResume').value.trim();
+    if (!name)    { errEl.textContent = 'Please enter your full name.'; return; }
+    if (!country) { errEl.textContent = 'Please enter your country.'; return; }
+    if (!years)   { errEl.textContent = 'Please select your years of IFS experience.'; return; }
+    if (!sel.length) { errEl.textContent = 'Pick at least one module.'; return; }
+    e.currentTarget.disabled = true; e.currentTarget.textContent = 'Submitting…';
+    const { error } = await sb.rpc('apply_as_consultant', {
+      p_modules: sel,
+      p_full_name: name,
+      p_country: country,
+      p_years_experience: years,
+      p_professional_url: linkedin || null,
+      p_background_note:  bio     || null,
+      p_resume_url:       resume  || null
+    });
+    if (error) { errEl.textContent = error.message; e.currentTarget.disabled = false; e.currentTarget.textContent = 'Submit application'; return; }
     await loadConsultantProfile(); renderConsultant();
   });
 }
@@ -2293,11 +2334,32 @@ function adminUserCard(u) {
 }
 
 function adminAppCard(a) {
-  return `<div style="border-bottom:1px solid var(--border);padding:10px 0">
-    <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center">
-      <div><div style="font-size:13px;font-weight:600">${escHtml(a.email)}</div>
-        <div style="font-size:11px;color:var(--text-3)">Modules: ${escHtml((a.modules || []).join(', ') || '—')} · Tier ${escHtml(a.tier)} · <b style="color:var(--accent)">${escHtml(a.status)}</b></div>
-        <div style="font-size:11px;color:var(--text-3);margin-top:2px" title="Track record — informs tier decisions">✅ <b style="color:var(--success)">${a.confirmed_count || 0}</b> confirmed · <span style="color:${(a.refunded_count || 0) > 0 ? 'var(--danger)' : 'var(--text-3)'}">↩ ${a.refunded_count || 0} refunded</span> · 📦 ${a.taken_count || 0} taken</div></div>
+  const profileLink = a.professional_url
+    ? `<a href="${escHtml(a.professional_url)}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">🔗 Profile</a>`
+    : `<span style="color:var(--text-3)">No profile link</span>`;
+  const resumeLink = a.resume_url
+    ? `<a href="${escHtml(a.resume_url)}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">📄 Resume</a>`
+    : '';
+  const bio = a.background_note
+    ? `<div style="font-size:12px;color:var(--text-2);margin-top:5px;padding:8px;background:var(--surface-2);border-radius:6px;line-height:1.5">${escHtml(a.background_note)}</div>`
+    : '';
+  const identity = [
+    a.full_name ? `<b>${escHtml(a.full_name)}</b>` : '<span style="color:var(--warning)">No name given</span>',
+    a.country   ? escHtml(a.country) : '<span style="color:var(--warning)">No country</span>',
+    a.years_experience ? escHtml(a.years_experience) : ''
+  ].filter(Boolean).join(' · ');
+  return `<div style="border-bottom:1px solid var(--border);padding:12px 0">
+    <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:flex-start">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:600">${escHtml(a.email)}</div>
+        <div style="font-size:12px;color:var(--text-2);margin-top:2px">${identity}</div>
+        <div style="font-size:11px;color:var(--text-3);margin-top:3px;display:flex;gap:10px;flex-wrap:wrap">
+          ${profileLink}${resumeLink ? ' · ' + resumeLink : ''}
+        </div>
+        ${bio}
+        <div style="font-size:11px;color:var(--text-3);margin-top:5px">Modules: ${escHtml((a.modules || []).join(', ') || '—')} · Tier ${escHtml(a.tier)} · <b style="color:var(--accent)">${escHtml(a.status)}</b></div>
+        <div style="font-size:11px;color:var(--text-3);margin-top:2px" title="Track record — informs tier decisions">✅ <b style="color:var(--success)">${a.confirmed_count || 0}</b> confirmed · <span style="color:${(a.refunded_count || 0) > 0 ? 'var(--danger)' : 'var(--text-3)'}">↩ ${a.refunded_count || 0} refunded</span> · 📦 ${a.taken_count || 0} taken</div>
+      </div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
         <select data-tier="${a.user_id}" style="font-size:11px;background:var(--surface-2);border:1px solid var(--border-strong);border-radius:6px;color:var(--text);padding:2px">
           ${['bronze','silver','gold'].map(t => `<option value="${t}" ${a.tier === t ? 'selected' : ''}>${t}</option>`).join('')}</select>
