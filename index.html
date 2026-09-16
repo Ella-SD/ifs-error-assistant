@@ -2051,12 +2051,40 @@ function renderConsultantApply(el) {
       <div class="field" style="margin-bottom:10px"><label style="font-size:12px;font-weight:600;color:var(--text-2)">Brief IFS background</label>
         <textarea id="applyBio" rows="3" placeholder="e.g. 8 years implementing IFS Apps 10 for discrete manufacturers — strong in MM, SCM, and Shop Floor Control." maxlength="500" style="width:100%;background:var(--surface-2);border:1px solid var(--border-strong);border-radius:8px;padding:8px;font-size:13px;color:var(--text);resize:vertical;margin-top:4px"></textarea>
         <div style="font-size:11px;color:var(--text-3);margin-top:4px">2–3 sentences on where you've worked with IFS and which modules you know well.</div></div>
-      <div class="field" style="margin-bottom:16px"><label style="font-size:12px;font-weight:600;color:var(--text-2)">Resume / CV link (optional)</label>
-        <input id="applyResume" type="url" placeholder="https://drive.google.com/… or Dropbox, etc." style="width:100%;background:var(--surface-2);border:1px solid var(--border-strong);border-radius:8px;padding:8px;font-size:13px;color:var(--text);margin-top:4px">
-        <div style="font-size:11px;color:var(--text-3);margin-top:4px">Paste a shareable link to your resume — Google Drive, Dropbox, OneDrive, etc.</div></div>
+      <div class="field" style="margin-bottom:16px"><label style="font-size:12px;font-weight:600;color:var(--text-2)">Resume / CV (optional)</label>
+        <input id="applyResumeFile" type="file" accept=".pdf,.doc,.docx" style="width:100%;background:var(--surface-2);border:1px solid var(--border-strong);border-radius:8px;padding:8px;font-size:13px;color:var(--text);margin-top:4px;cursor:pointer">
+        <div style="font-size:11px;color:var(--text-3);margin:6px 0 4px;text-align:center">— or paste a link —</div>
+        <input id="applyResumeLink" type="url" placeholder="https://drive.google.com/… or LinkedIn, Dropbox, etc." style="width:100%;background:var(--surface-2);border:1px solid var(--border-strong);border-radius:8px;padding:8px;font-size:13px;color:var(--text)">
+        <div style="font-size:11px;color:var(--text-3);margin-top:4px">PDF, Word, or a shareable link. Attach a file OR paste a link — either works.</div></div>
+      <div class="field" style="margin-bottom:10px"><label style="font-size:12px;font-weight:600;color:var(--text-2)">Have you worked for IFS AB or an IFS Partner as a consultant? <span style="color:var(--danger)">*</span></label>
+        <div style="display:flex;gap:12px;margin-top:8px">
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;font-weight:500">
+            <input type="radio" name="applyIFS" id="applyIFSYes" value="yes" style="accent-color:var(--accent)"> Yes
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;font-weight:500">
+            <input type="radio" name="applyIFS" id="applyIFSNo" value="no" style="accent-color:var(--accent)"> No
+          </label>
+        </div></div>
+      <div id="applyIFSYearsRow" style="display:none;margin-bottom:16px"><label style="font-size:12px;font-weight:600;color:var(--text-2)">How many years? <span style="color:var(--danger)">*</span></label>
+        <select id="applyIFSYears" style="width:100%;background:var(--surface-2);border:1px solid var(--border-strong);border-radius:8px;padding:8px;font-size:13px;color:var(--text);margin-top:4px">
+          <option value="">— Select —</option>
+          <option value="< 1 year">Less than 1 year</option>
+          <option value="1–3 years">1–3 years</option>
+          <option value="3–5 years">3–5 years</option>
+          <option value="5–10 years">5–10 years</option>
+          <option value="10+ years">10+ years</option>
+        </select></div>
       <button class="btn btn-primary" id="applyConsultantBtn">Submit application</button>
       <div id="applyErr" style="font-size:11px;color:var(--danger);margin-top:8px"></div>
     </div>`;
+  // Show/hide the "how many years" row based on the IFS yes/no selection
+  document.querySelectorAll('input[name="applyIFS"]').forEach(r => {
+    r.addEventListener('change', () => {
+      document.getElementById('applyIFSYearsRow').style.display = r.value === 'yes' ? '' : 'none';
+      if (r.value !== 'yes') document.getElementById('applyIFSYears').value = '';
+    });
+  });
+
   document.getElementById('applyConsultantBtn').addEventListener('click', async (e) => {
     const errEl = document.getElementById('applyErr');
     errEl.textContent = '';
@@ -2064,22 +2092,44 @@ function renderConsultantApply(el) {
     const country = document.getElementById('applyCountry').value.trim();
     const years   = document.getElementById('applyYears').value;
     const sel     = Array.from(document.getElementById('applyModules').selectedOptions).map(o => o.value);
-    const linkedin = document.getElementById('applyLinkedIn').value.trim();
-    const bio      = document.getElementById('applyBio').value.trim();
-    const resume   = document.getElementById('applyResume').value.trim();
+    const linkedin    = document.getElementById('applyLinkedIn').value.trim();
+    const bio         = document.getElementById('applyBio').value.trim();
+    const resumeFile  = document.getElementById('applyResumeFile').files[0];
+    const resumeLink  = document.getElementById('applyResumeLink').value.trim();
+    const ifsRadio    = document.querySelector('input[name="applyIFS"]:checked');
+    const ifsYears    = document.getElementById('applyIFSYears').value;
     if (!name)    { errEl.textContent = 'Please enter your full name.'; return; }
     if (!country) { errEl.textContent = 'Please enter your country.'; return; }
     if (!years)   { errEl.textContent = 'Please select your years of IFS experience.'; return; }
     if (!sel.length) { errEl.textContent = 'Pick at least one module.'; return; }
+    if (!ifsRadio) { errEl.textContent = 'Please answer the IFS / IFS Partner question.'; return; }
+    const workedForIFS = ifsRadio.value === 'yes';
+    if (workedForIFS && !ifsYears) { errEl.textContent = 'Please select how many years you worked for IFS / an IFS Partner.'; return; }
     e.currentTarget.disabled = true; e.currentTarget.textContent = 'Submitting…';
+
+    // Upload resume file if provided; otherwise fall back to a pasted link.
+    let resumeUrl = resumeLink || null;
+    if (resumeFile) {
+      const ext  = resumeFile.name.split('.').pop();
+      const uuid = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36);
+      const path = `${authUser.id}/${uuid}.${ext}`;
+      const { data: upData, error: upErr } = await sb.storage
+        .from('consultant-resumes').upload(path, resumeFile, { upsert: true });
+      if (upErr) { errEl.textContent = 'Resume upload failed: ' + upErr.message; e.currentTarget.disabled = false; e.currentTarget.textContent = 'Submit application'; return; }
+      const { data: urlData } = sb.storage.from('consultant-resumes').getPublicUrl(path);
+      resumeUrl = urlData?.publicUrl || resumeLink || null;
+    }
+
     const { error } = await sb.rpc('apply_as_consultant', {
       p_modules: sel,
       p_full_name: name,
       p_country: country,
       p_years_experience: years,
-      p_professional_url: linkedin || null,
-      p_background_note:  bio     || null,
-      p_resume_url:       resume  || null
+      p_professional_url: linkedin    || null,
+      p_background_note:  bio         || null,
+      p_resume_url:       resumeUrl,
+      p_worked_for_ifs:     workedForIFS,
+      p_ifs_partner_years:  workedForIFS ? ifsYears : null
     });
     if (error) { errEl.textContent = error.message; e.currentTarget.disabled = false; e.currentTarget.textContent = 'Submit application'; return; }
     await loadConsultantProfile(); renderConsultant();
@@ -2357,7 +2407,11 @@ function adminAppCard(a) {
           ${profileLink}${resumeLink ? ' · ' + resumeLink : ''}
         </div>
         ${bio}
-        <div style="font-size:11px;color:var(--text-3);margin-top:5px">Modules: ${escHtml((a.modules || []).join(', ') || '—')} · Tier ${escHtml(a.tier)} · <b style="color:var(--accent)">${escHtml(a.status)}</b></div>
+        <div style="font-size:11px;color:var(--text-3);margin-top:5px">
+          ${a.worked_for_ifs === true  ? `<span style="color:var(--success);font-weight:600">✅ Worked for IFS / IFS Partner${a.ifs_partner_years ? ' · ' + escHtml(a.ifs_partner_years) : ''}</span>` :
+            a.worked_for_ifs === false ? `<span style="color:var(--text-3)">No IFS/Partner employment</span>` : ''}
+        </div>
+        <div style="font-size:11px;color:var(--text-3);margin-top:3px">Modules: ${escHtml((a.modules || []).join(', ') || '—')} · Tier ${escHtml(a.tier)} · <b style="color:var(--accent)">${escHtml(a.status)}</b></div>
         <div style="font-size:11px;color:var(--text-3);margin-top:2px" title="Track record — informs tier decisions">✅ <b style="color:var(--success)">${a.confirmed_count || 0}</b> confirmed · <span style="color:${(a.refunded_count || 0) > 0 ? 'var(--danger)' : 'var(--text-3)'}">↩ ${a.refunded_count || 0} refunded</span> · 📦 ${a.taken_count || 0} taken</div>
       </div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
