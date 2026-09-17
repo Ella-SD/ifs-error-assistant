@@ -2087,7 +2087,16 @@ function renderConsultantApply(el) {
         </div></div>
       <div id="applyCertDetailsRow" style="display:none;margin-bottom:16px;background:var(--surface-2);border-radius:10px;padding:12px;border:1px solid var(--border)">
         <div style="font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:10px">Certification details</div>
-        <div style="margin-bottom:10px"><label style="font-size:12px;font-weight:600;color:var(--text-2)">Certification area(s) <span style="color:var(--danger)">*</span></label>
+        <div style="margin-bottom:10px"><label style="font-size:12px;font-weight:600;color:var(--text-2)">Certification name <span style="color:var(--danger)">*</span></label>
+          <select id="applyCertPlatform" style="width:100%;background:var(--surface);border:1px solid var(--border-strong);border-radius:8px;padding:8px;font-size:13px;color:var(--text);margin-top:4px">
+            <option value="">— Select —</option>
+            <option value="IFS Apps 9 (IFS Specialist)">IFS Specialist — IFS Apps 9</option>
+            <option value="IFS Apps 10 (IFS Specialist)">IFS Specialist — IFS Apps 10</option>
+            <option value="IFS Apps 10 (IFS Certified Practitioner)">IFS Certified Practitioner — IFS Apps 10</option>
+            <option value="IFS Cloud (IFS Certified Practitioner)">IFS Certified Practitioner — IFS Cloud</option>
+            <option value="Multiple versions">Multiple versions</option>
+          </select></div>
+        <div><label style="font-size:12px;font-weight:600;color:var(--text-2)">Certification area(s) <span style="color:var(--danger)">*</span></label>
           <select id="applyCertAreas" multiple size="7" style="width:100%;background:var(--surface);border:1px solid var(--border-strong);border-radius:8px;padding:6px;font-size:13px;color:var(--text);margin-top:4px">
             <optgroup label="Functional">
               <option value="Supply Chain Management">Supply Chain Management</option>
@@ -2109,15 +2118,6 @@ function renderConsultantApply(el) {
             </optgroup>
           </select>
           <div style="font-size:11px;color:var(--text-3);margin-top:4px">Hold Ctrl/Cmd to select multiple if you have more than one.</div></div>
-        <div><label style="font-size:12px;font-weight:600;color:var(--text-2)">IFS version / platform <span style="color:var(--danger)">*</span></label>
-          <select id="applyCertPlatform" style="width:100%;background:var(--surface);border:1px solid var(--border-strong);border-radius:8px;padding:8px;font-size:13px;color:var(--text);margin-top:4px">
-            <option value="">— Select —</option>
-            <option value="IFS Apps 9 (IFS Specialist)">IFS Apps 9 — formerly "IFS Specialist"</option>
-            <option value="IFS Apps 10 (IFS Specialist)">IFS Apps 10 — formerly "IFS Specialist"</option>
-            <option value="IFS Apps 10 (IFS Certified Practitioner)">IFS Apps 10 — IFS Certified Practitioner</option>
-            <option value="IFS Cloud (IFS Certified Practitioner)">IFS Cloud — IFS Certified Practitioner</option>
-            <option value="Multiple versions">Multiple versions</option>
-          </select></div>
       </div>
       <button class="btn btn-primary" id="applyConsultantBtn">Submit application</button>
       <div id="applyErr" style="font-size:11px;color:var(--danger);margin-top:8px"></div>
