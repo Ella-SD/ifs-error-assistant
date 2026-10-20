@@ -2453,9 +2453,13 @@ function adminAppCard(a) {
   const profileLink = a.professional_url
     ? `<a href="${escHtml(a.professional_url)}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">🔗 Profile</a>`
     : `<span style="color:var(--text-3)">No profile link</span>`;
-  const resumeLink = a.resume_url
-    ? `<a href="${escHtml(a.resume_url)}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">📄 Resume</a>`
-    : '';
+  // Uploaded resumes live in a private bucket, so open them via a short-lived signed URL.
+  const resumeMark = '/storage/v1/object/public/consultant-resumes/';
+  const resumeAt = a.resume_url ? a.resume_url.indexOf(resumeMark) : -1;
+  const resumeLink = !a.resume_url ? ''
+    : resumeAt >= 0
+      ? `<a href="#" data-resume-path="${escHtml(decodeURIComponent(a.resume_url.slice(resumeAt + resumeMark.length)))}" style="color:var(--accent);text-decoration:none">📄 Resume</a>`
+      : `<a href="${escHtml(a.resume_url)}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">📄 Resume</a>`;
   const bio = a.background_note
     ? `<div style="font-size:12px;color:var(--text-2);margin-top:5px;padding:8px;background:var(--surface-2);border-radius:6px;line-height:1.5">${escHtml(a.background_note)}</div>`
     : '';
@@ -2544,6 +2548,13 @@ function wireMarketplaceAdmin(el) {
     const { error } = await sb.rpc('admin_mark_cashout_paid', { p_id: b.dataset.cashoutPaid });
     if (error) { alert(error.message); return; }
     renderMarketplaceAdmin();
+  }));
+  el.querySelectorAll('[data-resume-path]').forEach(link => link.addEventListener('click', async e => {
+    e.preventDefault();
+    const win = window.open('', '_blank');   // opened synchronously so pop-up blockers allow it
+    const { data, error } = await sb.storage.from('consultant-resumes').createSignedUrl(link.dataset.resumePath, 600);
+    if (error || !data) { if (win) win.close(); alert('Could not open resume: ' + (error ? error.message : 'unknown error')); return; }
+    if (win) win.location = data.signedUrl; else window.location.href = data.signedUrl;
   }));
   el.querySelectorAll('[data-appstatus]').forEach(b => b.addEventListener('click', async () => {
     const tier = el.querySelector(`[data-tier="${b.dataset.appstatus}"]`)?.value || null;
