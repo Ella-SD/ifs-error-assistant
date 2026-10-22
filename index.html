@@ -4144,7 +4144,7 @@ function renderUserBar() {
     ${showBilling ? `<span class="plan-badge">${escHtml(planLabel())}</span>
       <button id="billingBtn">${hasCustomer ? 'Manage billing' : 'Upgrade'}</button>` : ''}
     <a href="help.html" target="_blank" rel="noopener" title="How to use IFS GURU" style="font-size:12px;color:var(--text-3);text-decoration:none;align-self:center">❓ Help</a>
-    <button id="securityBtn" title="Two-factor authentication">🔒 2FA</button>
+    <button id="securityBtn" title="Account &amp; security: two-factor authentication, delete account">⚙️ Account</button>
     <button id="authSignout">Sign out</button>`;
   document.getElementById('authSignout').onclick = () => sb.auth.signOut();
   document.getElementById('securityBtn').onclick = openSecurityModal;
@@ -4213,7 +4213,7 @@ async function renderMfaChallenge() {
   input.addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
 }
 
-// The enrollment / management modal, opened from the header "🔒 2FA" button.
+// The enrollment / management modal, opened from the header "⚙️ Account" button.
 async function openSecurityModal() {
   const existing = document.getElementById('mfaModal'); if (existing) existing.remove();
   const overlay = document.createElement('div');
@@ -4221,7 +4221,7 @@ async function openSecurityModal() {
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px';
   overlay.innerHTML = `<div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;max-width:430px;width:100%;padding:24px;max-height:90vh;overflow-y:auto">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-        <div style="font-size:16px;font-weight:700">🔒 Security</div>
+        <div style="font-size:16px;font-weight:700">⚙️ Account &amp; security</div>
         <button class="btn btn-ghost" id="mfaClose" style="font-size:12px;padding:2px 10px">Close</button>
       </div>
       <div style="font-size:13px;font-weight:600;color:var(--text-2);margin-bottom:8px">Two-factor authentication</div>
