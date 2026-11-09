@@ -486,6 +486,8 @@
   .auth-btn:disabled { opacity: .6; cursor: default; }
   .auth-toggle { margin-top: 14px; font-size: 13px; color: var(--text-2); text-align: center; }
   .auth-toggle a { color: var(--accent); cursor: pointer; text-decoration: none; }
+  .auth-forgot { text-align: right; margin-top: 6px; font-size: 12px; }
+  .auth-forgot a { color: var(--accent); cursor: pointer; text-decoration: none; }
   .auth-msg { font-size: 13px; margin-top: 12px; padding: 10px 12px; border-radius: 8px; }
   .auth-msg.err { background: var(--danger-dim); color: var(--danger); }
   .auth-msg.ok  { background: var(--success-dim); color: var(--success); }
@@ -3688,6 +3690,14 @@ function normalizeStepList(steps) {
 // ══════════════════════════════════════════════════════════════
 // PHASE 2 — Accounts, companies, roles (Supabase)
 // ══════════════════════════════════════════════════════════════
+// Read the auth redirect hash BEFORE createClient consumes and strips it.
+// type=recovery → user arrived from a password-reset email; error_code → an
+// expired/used email link (reset or signup confirmation).
+const authLinkParams = new URLSearchParams(location.hash.slice(1));
+let passwordRecovery = authLinkParams.get('type') === 'recovery';
+const authLinkError = authLinkParams.get('error_code');
+if (authLinkError) history.replaceState(null, '', location.pathname + location.search);
+
 const SUPABASE_URL = 'https://mbzepypmypukwdftvuhb.supabase.co';
 const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_GSfyIsAs1b1W11VYbBMvRg__KaVyltb';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
@@ -4016,6 +4026,7 @@ function renderAuthScreen(msg) {
         <label>Password</label>
         <input id="authPassword" type="password"
           autocomplete="${isSignup ? 'new-password' : 'current-password'}" placeholder="••••••••">
+        ${isSignup ? '' : `<div class="auth-forgot"><a id="authForgot">Forgot password?</a></div>`}
       </div>
       <button class="auth-btn" id="authSubmit">${isSignup ? 'Sign up' : 'Sign in'}</button>
       <div id="authMsg"></div>
@@ -4031,6 +4042,7 @@ function renderAuthScreen(msg) {
   if (msg) showAuthMsg(msg.text, msg.type);
   document.getElementById('authSubmit').onclick = isSignup ? handleSignup : handleLogin;
   document.getElementById('authBack').onclick = renderLanding;
+  if (!isSignup) document.getElementById('authForgot').onclick = handleForgotPassword;
   document.getElementById('authSwitch').onclick = () => {
     authMode = isSignup ? 'login' : 'signup'; renderAuthScreen();
   };
@@ -4054,18 +4066,73 @@ async function handleLogin() {
   // onAuthStateChange -> boot()
 }
 
+// Email links (signup confirmation, password reset) come back to THIS app's URL
+// explicitly, so they never depend on the Supabase "Site URL" field and
+// auto-adapt across domains. Resolves to the app's directory (ends in "/"),
+// which must be in Supabase's Redirect URLs allow-list.
+function appBaseUrl() {
+  return location.origin + location.pathname.replace(/[^/]*$/, '');
+}
+
+async function handleForgotPassword() {
+  const email = document.getElementById('authEmail').value.trim();
+  if (!email) return showAuthMsg('Enter your email above, then click "Forgot password?" again.');
+  const link = document.getElementById('authForgot');
+  link.style.pointerEvents = 'none'; link.textContent = 'Sending…';
+  const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: appBaseUrl() });
+  link.style.pointerEvents = ''; link.textContent = 'Forgot password?';
+  if (error) return showAuthMsg(error.message);
+  // Same message whether or not the account exists (don't reveal who's registered)
+  showAuthMsg('If an account exists for ' + email + ', we\'ve emailed a password reset link. Check your inbox (and spam folder).', 'ok');
+}
+
+// Shown after the user clicks the reset link in their email (they're signed in
+// by the link; this lets them choose the new password).
+function renderNewPassword() {
+  document.body.classList.remove('app-ready');
+  const gate = document.getElementById('authGate');
+  gate.classList.remove('landing-mode');
+  gate.style.display = 'flex';
+  gate.innerHTML = `
+    <div class="auth-card">
+      <img src="assets/logo.png" class="auth-logo-img" alt="IFSGURU">
+      <div class="auth-title">Set a new password</div>
+      <div class="auth-sub">${escHtml(authUser.email)}</div>
+      <div class="auth-field">
+        <label>New password</label>
+        <input id="newPw" type="password" autocomplete="new-password" placeholder="At least 8 characters">
+      </div>
+      <div class="auth-field">
+        <label>Confirm new password</label>
+        <input id="newPw2" type="password" autocomplete="new-password" placeholder="••••••••">
+      </div>
+      <button class="auth-btn" id="newPwSave">Save new password</button>
+      <div id="authMsg"></div>
+    </div>`;
+  const save = async () => {
+    const pw = document.getElementById('newPw').value;
+    if (pw.length < 8) return showAuthMsg('Password must be at least 8 characters.');
+    if (pw !== document.getElementById('newPw2').value) return showAuthMsg('The two passwords don\'t match.');
+    const btn = document.getElementById('newPwSave'); btn.disabled = true; btn.textContent = 'Saving…';
+    // Clear first: updateUser fires USER_UPDATED → boot() before it returns
+    passwordRecovery = false;
+    const { error } = await sb.auth.updateUser({ password: pw });
+    if (error) { passwordRecovery = true; btn.disabled = false; btn.textContent = 'Save new password'; return showAuthMsg(error.message); }
+    boot();
+  };
+  document.getElementById('newPwSave').onclick = save;
+  ['newPw', 'newPw2'].forEach(id =>
+    document.getElementById(id).addEventListener('keydown', e => { if (e.key === 'Enter') save(); }));
+  document.getElementById('newPw').focus();
+}
+
 async function handleSignup() {
   const email = document.getElementById('authEmail').value.trim();
   const password = document.getElementById('authPassword').value;
   if (!email || !password) return showAuthMsg('Enter your email and password.');
   if (password.length < 8) return showAuthMsg('Password must be at least 8 characters.');
   const btn = document.getElementById('authSubmit'); btn.disabled = true; btn.textContent = 'Creating…';
-  // Send the confirmation link back to THIS app's URL explicitly, so it never
-  // depends on the Supabase "Site URL" field and auto-adapts across domains
-  // (github.io now, ifsguru.com later). Resolves to the app's directory (ends in
-  // "/"), which must be in Supabase's Redirect URLs allow-list.
-  const appBase = location.origin + location.pathname.replace(/[^/]*$/, '');
-  const { data, error } = await sb.auth.signUp({ email, password, options: { emailRedirectTo: appBase } });
+  const { data, error } = await sb.auth.signUp({ email, password, options: { emailRedirectTo: appBaseUrl() } });
   if (error) { btn.disabled = false; btn.textContent = 'Sign up'; return showAuthMsg(error.message); }
   if (!data.session) {
     // Email-confirmation is ON — no session yet
@@ -4316,6 +4383,7 @@ async function renderMfaBody() {
 
 // ── Gated boot ─────────────────────────────────────────────────
 let booting = false;
+let authLinkShown = false;
 async function boot() {
   if (booting) return;
   booting = true;
@@ -4323,11 +4391,18 @@ async function boot() {
     const { data: { session } } = await sb.auth.getSession();
     if (!session) {
       authUser = null; profile = null; company = null; isPlatformAdmin = false; appDataLoaded = false;
+      if (authLinkError && !authLinkShown) {
+        // Came from an email link that has expired or was already used
+        authLinkShown = true; authMode = 'login';
+        renderAuthScreen({ text: 'That email link has expired or was already used. Sign in below, or click "Forgot password?" to get a new reset link.', type: 'err' });
+        return;
+      }
       renderLanding();
       return;
     }
     authUser = session.user;
     if (await mfaStepUpNeeded()) { renderMfaChallenge(); return; }
+    if (passwordRecovery) { renderNewPassword(); return; }
     if (!profile) profile = await loadProfile();
     if (!profile) { renderOnboarding(); return; }
     isPlatformAdmin = profile.role === 'platform_admin';
@@ -4352,7 +4427,10 @@ async function boot() {
   }
 }
 
-sb.auth.onAuthStateChange(() => boot());
+sb.auth.onAuthStateChange(event => {
+  if (event === 'PASSWORD_RECOVERY') passwordRecovery = true;
+  boot();
+});
 
 // ── Init ─────────────────────────────────────────────────────
 boot();
